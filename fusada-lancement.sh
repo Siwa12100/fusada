@@ -56,7 +56,7 @@ if [ "$USE_RESOURCE_LIMITS" = "yes" ]; then
     if [ -n "$LIMIT_MEMORY" ]; alors
         LIMITS="$LIMITS --memory=$LIMIT_MEMORY"
     fi
-fi
+fi  # Correction de la syntaxe ici
 
 # [fusada-lancement : ${NOM_CONTENEUR}] --> Lancement du conteneur Docker avec ou sans limite de ressources et en montant un volume
 if [ -n "$LIMITS" ]; then

@@ -4,8 +4,5 @@ FROM openjdk:21-slim
 # [lancement conteneur : ${NOM_CONTENEUR}] --> Définition du répertoire de travail dans le conteneur
 WORKDIR /minecraft
 
-# [lancement conteneur : ${NOM_CONTENEUR}] --> Copie du fichier serveur Minecraft depuis le répertoire parent
-COPY ../server.jar .
-
 # [lancement conteneur : ${NOM_CONTENEUR}] --> Commande pour démarrer le serveur Minecraft sans spécifier de limites mémoire
 CMD ["java", "-jar", "server.jar", "nogui"]
