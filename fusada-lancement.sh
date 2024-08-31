@@ -82,3 +82,11 @@ echo -e "${GREEN}[lancement conteneur : ${NOM_CONTENEUR}] --> Le serveur Minecra
 echo -e "${BLUE}[lancement conteneur : ${NOM_CONTENEUR}] --> Pour accéder au serveur, utilisez l'adresse suivante : localhost:$PORT_REEL${NC}"
 echo -e "${BLUE}[lancement conteneur : ${NOM_CONTENEUR}] --> Pour arrêter le serveur, utilisez la commande : docker stop $NOM_CONTENEUR${NC}"
 echo -e "${BLUE}[lancement conteneur : ${NOM_CONTENEUR}] --> Pour redémarrer le serveur, utilisez la commande : docker start $NOM_CONTENEUR${NC}"
+
+# [lancement conteneur : ${NOM_CONTENEUR}] --> Attacher la console Docker si configuré
+if [ "$ATTACH_CONSOLE" = "yes" ]; then
+    echo -e "${BLUE}[lancement conteneur : ${NOM_CONTENEUR}] --> Attachement à la console du serveur Minecraft...${NC}"
+    docker attach $NOM_CONTENEUR
+else
+    echo -e "${GREEN}[lancement conteneur : ${NOM_CONTENEUR}] --> Lancement terminé sans attachement à la console.${NC}"
+fi

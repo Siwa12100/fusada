@@ -19,3 +19,6 @@ MEMORY_LIMIT=${MEMORY_LIMIT:-"4g"}  # Valeur par défaut : 4 Go
 
 # CPUS_SET : Cœurs CPU spécifiques que le conteneur peut utiliser. Ignoré si LIMITERESSOURCES=false
 CPUS_SET=${CPUS_SET:-"0,1"}  # Valeur par défaut : 0,1
+
+# ATTACH_CONSOLE : Indique si la console Docker doit être attachée après le lancement du serveur. yes/no
+ATTACH_CONSOLE=${ATTACH_CONSOLE:-yes}  # Valeur par défaut : yes (attacher la console)
