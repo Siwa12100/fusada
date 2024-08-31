@@ -78,7 +78,7 @@ sudo make install
    ./fusada/fusada-console.sh
    ```
 
-2. "Envoyer des commandes au serveur Minecraft** : Pour envoyer des commandes dans la console, utiliser le script `fusada-cli-rcon.sh`.
+2. **Envoyer des commandes au serveur Minecraft** : Pour envoyer des commandes dans la console, utiliser le script `fusada-cli-rcon.sh`.
 3. 
    Tapez vos commandes dans la console et appuyez sur `Entrée`. Pour quitter la session de console, tapez `exit`.
 
