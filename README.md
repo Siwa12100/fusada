@@ -72,12 +72,14 @@ sudo make install
 
 ### 2.6. Interaction avec la Console du Serveur Minecraft
 
-1. **Afficher la console du serveur Minecraft** : Pour interagir avec la console du serveur via RCON, utilisez le script `fusada-console.sh` :
+1. **Afficher la console du serveur Minecraft** : Pour voir la console du serveur, utilisez le script `fusada-console.sh` :
 
    ```bash
    ./fusada/fusada-console.sh
    ```
 
+2. "Envoyer des commandes au serveur Minecraft** : Pour envoyer des commandes dans la console, utiliser le script `fusada-cli-rcon.sh`.
+3. 
    Tapez vos commandes dans la console et appuyez sur `Entrée`. Pour quitter la session de console, tapez `exit`.
 
 ### 2.7. Gestion du Serveur Minecraft
