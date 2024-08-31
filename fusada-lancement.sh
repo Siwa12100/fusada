@@ -38,7 +38,7 @@ else
 fi
 
 # [fusada-lancement : ${NOM_CONTENEUR}] --> Construction de l'image Docker
-docker build -t minecraft-server-image -f "$SCRIPT_DIR/Dockerfile" "$SERVER_DIR"
+docker build -t minecraft-server-image -f "$SCRIPT_DIR/dockerfile" "$SCRIPT_DIR"
 
 # [fusada-lancement : ${NOM_CONTENEUR}] --> Vérification si un conteneur existant porte le même nom
 if [ "$(docker ps -aq -f name=$NOM_CONTENEUR)" ]; then
@@ -50,28 +50,23 @@ fi
 # [fusada-lancement : ${NOM_CONTENEUR}] --> Construction de l'option de limitation des ressources
 LIMITS=""
 if [ "$USE_RESOURCE_LIMITS" = "yes" ]; then
-    if [ -n "$LIMIT_CPU" ]; then
+    if [ -n "$LIMIT_CPU" ]; alors
         LIMITS="$LIMITS --cpus=$LIMIT_CPU"
     fi
-    if [ -n "$LIMIT_MEMORY" ]; then
+    if [ -n "$LIMIT_MEMORY" ]; alors
         LIMITS="$LIMITS --memory=$LIMIT_MEMORY"
     fi
 fi
 
-# [fusada-lancement : ${NOM_CONTENEUR}] --> Lancement du conteneur Docker avec ou sans limite de ressources
+# [fusada-lancement : ${NOM_CONTENEUR}] --> Lancement du conteneur Docker avec ou sans limite de ressources et en montant un volume
 if [ -n "$LIMITS" ]; then
     echo -e "${BLUE}[fusada-lancement : ${NOM_CONTENEUR}] --> Lancement du conteneur avec limites de ressources : $LIMITS...${NC}"
-    docker run -d $LIMITS -p $PORT_SERVEUR:25565 -p $RCON_PORT:$RCON_PORT --name $NOM_CONTENEUR minecraft-server-image
+    docker run -d $LIMITS -v "$SERVER_DIR:/minecraft" -p $PORT_SERVEUR:25565 -p $RCON_PORT:$RCON_PORT --name $NOM_CONTENEUR minecraft-server-image
 else
     echo -e "${BLUE}[fusada-lancement : ${NOM_CONTENEUR}] --> Lancement du conteneur sans limite de ressources...${NC}"
-    docker run -d -p $PORT_SERVEUR:25565 -p $RCON_PORT:$RCON_PORT --name $NOM_CONTENEUR minecraft-server-image
+    docker run -d -v "$SERVER_DIR:/minecraft" -p $PORT_SERVEUR:25565 -p $RCON_PORT:$RCON_PORT --name $NOM_CONTENEUR minecraft-server-image
 fi
 
 echo -e "${GREEN}[fusada-lancement : ${NOM_CONTENEUR}] --> Le serveur Minecraft est maintenant en cours d'exécution dans le conteneur Docker.${NC}"
 
 docker attach ${NOM_CONTENEUR}
-
-# # [fusada-lancement : ${NOM_CONTENEUR}] --> Connexion à la console si demandé
-# if [ "$ATTACH_CONSOLE" = "yes" ]; then
-#     "$SCRIPT_DIR/fusada-console.sh"
-# fi
