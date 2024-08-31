@@ -6,7 +6,7 @@
 PORT_REEL=${PORT_REEL:-25565}  # Valeur par défaut : 25565
 
 # NOM_CONTENEUR : Nom du conteneur Docker pour le serveur Minecraft.
-NOM_CONTENEUR=${NOM_CONTENEUR:-"minecraft-server"}  # Valeur par défaut : minecraft-server
+NOM_CONTENEUR=${NOM_CONTENEUR:-"minecraft-serveur"}  # Valeur par défaut : minecraft-server
 
 # LIMITERESSOURCES : Indique si les ressources (CPU, RAM) doivent être limitées. true/false
 LIMITERESSOURCES=${LIMITERESSOURCES:-false}  # Valeur par défaut : false (pas de limitation)
