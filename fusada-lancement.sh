@@ -69,6 +69,8 @@ fi
 
 echo -e "${GREEN}[fusada-lancement : ${NOM_CONTENEUR}] --> Le serveur Minecraft est maintenant en cours d'exécution dans le conteneur Docker.${NC}"
 
+docker attach ${NOM_CONTENEUR}
+
 # # [fusada-lancement : ${NOM_CONTENEUR}] --> Connexion à la console si demandé
 # if [ "$ATTACH_CONSOLE" = "yes" ]; then
 #     "$SCRIPT_DIR/fusada-console.sh"
