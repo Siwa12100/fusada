@@ -1,24 +1,25 @@
 #!/bin/bash
 
-# [lancement conteneur : ${NOM_CONTENEUR}] --> Configuration du serveur Minecraft
+# Configuration par défaut pour le serveur Minecraft
 
-# PORT_REEL : Le port sur lequel le serveur Minecraft sera accessible.
-PORT_REEL=${PORT_REEL:-25565}  # Valeur par défaut : 25565
+# Nom du conteneur Docker pour le serveur Minecraft
+NOM_CONTENEUR=${NOM_CONTENEUR:-"minecraft-serveur"}
 
-# NOM_CONTENEUR : Nom du conteneur Docker pour le serveur Minecraft.
-NOM_CONTENEUR=${NOM_CONTENEUR:-"minecraft-serveur"}  # Valeur par défaut : minecraft-server
+# Port sur lequel le serveur Minecraft est accessible
+PORT_SERVEUR=${PORT_SERVEUR:-25565}
 
-# LIMITERESSOURCES : Indique si les ressources (CPU, RAM) doivent être limitées. true/false
-LIMITERESSOURCES=${LIMITERESSOURCES:-false}  # Valeur par défaut : false (pas de limitation)
+# Port pour RCON
+RCON_PORT=${RCON_PORT:-25575}
 
-# CPU_LIMIT : Limite du nombre de cœurs CPU que le conteneur peut utiliser. Ignoré si LIMITERESSOURCES=false
-CPU_LIMIT=${CPU_LIMIT:-"2.0"}  # Valeur par défaut : 2 CPU
+# Mot de passe pour RCON
+RCON_PASSWORD=${RCON_PASSWORD:-"mdpdefaut"}
 
-# MEMORY_LIMIT : Limite de la mémoire RAM que le conteneur peut utiliser. Ignoré si LIMITERESSOURCES=false
-MEMORY_LIMIT=${MEMORY_LIMIT:-"4g"}  # Valeur par défaut : 4 Go
+# Activer ou désactiver l'attachement automatique à la console après le lancement
+ATTACH_CONSOLE=${ATTACH_CONSOLE:-"yes"}
 
-# CPUS_SET : Cœurs CPU spécifiques que le conteneur peut utiliser. Ignoré si LIMITERESSOURCES=false
-CPUS_SET=${CPUS_SET:-"0,1"}  # Valeur par défaut : 0,1
+# Limitation des ressources (RAM et CPU)
+LIMIT_CPU=${LIMIT_CPU:-""}          # Exemple : "2" pour limiter à 2 CPUs, ou laisser vide pour ne pas limiter
+LIMIT_MEMORY=${LIMIT_MEMORY:-""}    # Exemple : "2g" pour limiter à 2 Go de RAM, ou laisser vide pour ne pas limiter
 
-# ATTACH_CONSOLE : Indique si la console Docker doit être attachée après le lancement du serveur. yes/no
-ATTACH_CONSOLE=${ATTACH_CONSOLE:-yes}  # Valeur par défaut : yes (attacher la console)
+# Option pour activer/désactiver la limitation des ressources
+USE_RESOURCE_LIMITS=${USE_RESOURCE_LIMITS:-"no"}  # "yes" pour activer les limites de ressources
