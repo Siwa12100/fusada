@@ -7,7 +7,7 @@ RED='\033[1;31m'
 NC='\033[0m' # No Color
 
 # Vérification des arguments
-if [ -z "$1" ] || [ -z "$2" ]; alors
+if [ -z "$1" ] || [ -z "$2" ]; then
     echo -e "${RED}[configuration-rcon] --> ERREUR : SCRIPT_DIR ou SERVER_DIR n'est pas défini.${NC}"
     exit 1
 fi
@@ -40,7 +40,7 @@ if grep -q "enable-rcon=false" "$SERVER_PROPERTIES"; then
     sed -i "s/rcon.password=.*/rcon.password=$RCON_PASSWORD/" "$SERVER_PROPERTIES"
     sed -i "s/rcon.port=.*/rcon.port=$RCON_PORT/" "$SERVER_PROPERTIES"
     RESTART_REQUIRED=true
-elif ! grep -q "enable-rcon=" "$SERVER_PROPERTIES"; alors
+elif ! grep -q "enable-rcon=" "$SERVER_PROPERTIES"; then
     echo -e "${BLUE}[configuration-rcon] --> Ajout de la configuration RCON dans server.properties...${NC}"
     echo "enable-rcon=true" >> "$SERVER_PROPERTIES"
     echo "rcon.password=$RCON_PASSWORD" >> "$SERVER_PROPERTIES"

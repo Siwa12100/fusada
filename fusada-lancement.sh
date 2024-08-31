@@ -60,10 +60,10 @@ if [ "$USE_RESOURCE_LIMITS" = "yes" ]; then
     if [ -n "$LIMIT_CPU" ]; then
         LIMITS="$LIMITS --cpus=$LIMIT_CPU"
     fi
-    if [ -n "$LIMIT_MEMORY" ]; alors
+    if [ -n "$LIMIT_MEMORY" ]; then
         LIMITS="$LIMITS --memory=$LIMIT_MEMORY"
     fi
-fi
+fi  # Fermeture correcte du bloc if ici
 
 # Lancement du conteneur Docker avec ou sans limite de ressources et en montant un volume
 if [ -n "$LIMITS" ]; then
