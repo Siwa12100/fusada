@@ -25,19 +25,30 @@ source "$CONFIG_FILE"
 SERVER_PROPERTIES="$SERVER_DIR/server.properties"
 if [ ! -f "$SERVER_PROPERTIES" ]; then
     echo -e "${RED}[configuration-rcon] --> AVERTISSEMENT : Le fichier server.properties n'existe pas.${NC}"
-    exit 1
+    exit 0
 fi
+
+RESTART_REQUIRED=false
 
 if grep -q "enable-rcon=false" "$SERVER_PROPERTIES"; then
     echo -e "${BLUE}[configuration-rcon] --> Activation de RCON dans server.properties...${NC}"
     sed -i 's/enable-rcon=false/enable-rcon=true/' "$SERVER_PROPERTIES"
     sed -i "s/rcon.password=.*/rcon.password=$RCON_PASSWORD/" "$SERVER_PROPERTIES"
     sed -i "s/rcon.port=.*/rcon.port=$RCON_PORT/" "$SERVER_PROPERTIES"
+    RESTART_REQUIRED=true
 elif ! grep -q "enable-rcon=" "$SERVER_PROPERTIES"; then
     echo -e "${BLUE}[configuration-rcon] --> Ajout de la configuration RCON dans server.properties...${NC}"
     echo "enable-rcon=true" >> "$SERVER_PROPERTIES"
     echo "rcon.password=$RCON_PASSWORD" >> "$SERVER_PROPERTIES"
     echo "rcon.port=$RCON_PORT" >> "$SERVER_PROPERTIES"
+    RESTART_REQUIRED=true
 else
     echo -e "${GREEN}[configuration-rcon] --> RCON est déjà activé dans server.properties.${NC}"
+fi
+
+# [configuration-rcon] --> Redémarrage du serveur si nécessaire
+if [ "$RESTART_REQUIRED" = true ]; then
+    echo -e "${BLUE}[configuration-rcon] --> Redémarrage du serveur Minecraft pour appliquer les modifications RCON...${NC}"
+    docker restart $NOM_CONTENEUR
+    echo -e "${GREEN}[configuration-rcon] --> Serveur Minecraft redémarré avec succès.${NC}"
 fi

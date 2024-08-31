@@ -36,7 +36,7 @@ if [ ! -f "$SERVER_PROPERTIES" ]; then
     exit 1
 fi
 
-# [fusada-console : ${NOM_CONTENEUR}] --> Configuration de RCON
+# [fusada-console : ${NOM_CONTENEUR}] --> Configuration de RCON et redémarrage du serveur si nécessaire
 "$SCRIPT_DIR/configuration-rcon.sh"
 
 # [fusada-console : ${NOM_CONTENEUR}] --> Interaction avec la console Minecraft via mcrcon
