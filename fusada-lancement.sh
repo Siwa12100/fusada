@@ -28,8 +28,14 @@ then
     exit 1
 fi
 
-# [fusada-lancement : ${NOM_CONTENEUR}] --> Configuration de RCON
-"$SCRIPT_DIR/configuration-rcon.sh"
+# [fusada-lancement : ${NOM_CONTENEUR}] --> Vérification de l'existence de server.properties
+SERVER_PROPERTIES="$SERVER_DIR/server.properties"
+if [ -f "$SERVER_PROPERTIES" ]; then
+    echo -e "${BLUE}[fusada-lancement : ${NOM_CONTENEUR}] --> Le fichier server.properties existe. Configuration de RCON...${NC}"
+    "$SCRIPT_DIR/configuration-rcon.sh"
+else
+    echo -e "${RED}[fusada-lancement : ${NOM_CONTENEUR}] --> AVERTISSEMENT : Le fichier server.properties est introuvable. Configuration de RCON ignorée.${NC}"
+fi
 
 # [fusada-lancement : ${NOM_CONTENEUR}] --> Construction de l'image Docker
 docker build -t minecraft-server-image -f "$SCRIPT_DIR/Dockerfile" "$SERVER_DIR"

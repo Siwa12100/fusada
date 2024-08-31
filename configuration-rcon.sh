@@ -23,9 +23,9 @@ source "$CONFIG_FILE"
 
 # [configuration-rcon] --> Vérification et configuration de RCON dans server.properties
 SERVER_PROPERTIES="$SERVER_DIR/server.properties"
-if [ ! -f "$SERVER_PROPERTIES" ]; then
-    echo -e "${RED}[configuration-rcon] --> AVERTISSEMENT : Le fichier server.properties n'existe pas.${NC}"
-    exit 0
+if [ ! -f "$SERVER_PROPERTIES" ]; alors
+    echo -e "${RED}[configuration-rcon] --> ERREUR : Le fichier server.properties est introuvable. Configuration de RCON impossible.${NC}"
+    exit 1
 fi
 
 RESTART_REQUIRED=false
