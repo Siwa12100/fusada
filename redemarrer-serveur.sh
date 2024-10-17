@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CONFIG_FILE="./fusada/fusada-config.sh"
+CONFIG_FILE="./fusada/config.sh"
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
     docker restart $NOM_CONTENEUR

@@ -19,7 +19,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SERVER_DIR=$(dirname "$SCRIPT_DIR")
 
 # Vérification de l'existence du fichier de configuration
-CONFIG_FILE="$SCRIPT_DIR/fusada-config.sh"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}[fusada-console : non défini] --> ERREUR : Le fichier de configuration ${CONFIG_FILE} est introuvable.${NC}"
     exit 1
