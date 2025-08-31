@@ -1,119 +1,255 @@
-# Fusada
+# 📦 Fusada — Gestionnaire Docker pour serveurs Minecraft
 
-## 1. Objectif du Projet
+Fusada est un ensemble de scripts Bash qui permettent de **lancer, gérer et administrer facilement un serveur Minecraft** dans un conteneur Docker.
+Le but est de rendre l’expérience simple et propre, avec des logs lisibles (couleurs, emojis), une configuration centralisée et des outils intégrés pour RCON.
 
-Le projet **Fusada** consiste en une série de scripts Bash et un Dockerfile destinés à faciliter le déploiement et la gestion d'un serveur Minecraft dans un environnement Docker. Ce projet permet de gérer facilement la configuration, le déploiement, et la gestion d'un serveur Minecraft en utilisant Docker pour isoler l'environnement d'exécution, garantissant ainsi une stabilité et une portabilité optimales.
+---
 
-Le projet se compose de trois scripts principaux :
-- **`fusada-config.sh`** : Un script de configuration où toutes les variables nécessaires au déploiement du serveur sont définies, avec des valeurs par défaut adaptées à la plupart des environnements.
-- **`fusada-lancement.sh`** : Le script principal qui utilise les paramètres définis dans le script de configuration pour lancer le serveur Minecraft dans un conteneur Docker.
-- **`fusada-console.sh`** : Un script permettant d'interagir avec la console du serveur Minecraft via RCON.
+## ⚙️ Fonctionnement
 
-Un **Dockerfile** est également inclus pour créer une image Docker légère et performante, basée sur OpenJDK 21, optimisée pour exécuter un serveur Minecraft.
+* Le serveur Minecraft est exécuté dans un **conteneur Docker**, construit depuis un `dockerfile` minimal basé sur une image OpenJDK adaptée à la version de Minecraft (Java 8 → 21 selon `MC_VERSION`).
+* Tous les fichiers du serveur (monde, plugins, configs) sont stockés sur l’hôte et montés en **volume** (`$SERVER_DIR:/minecraft`) → **persistance garantie**.
+* Les ports nécessaires (jeu, RCON, services additionnels comme VoiceChat, BlueMap, etc.) sont automatiquement exposés en TCP et UDP.
+* Le conteneur est lancé avec :
 
-## 2. Utilisation des Scripts
+  * **UID/GID de l’utilisateur hôte** (pas de fichiers root dans tes dossiers ✨)
+  * **politique de redémarrage** `--restart unless-stopped` (le serveur revient après crash ou reboot du VPS)
+  * **limites CPU/RAM optionnelles**
+* La configuration principale est centralisée dans `config.sh`.
+  Tous les scripts la chargent et s’adaptent.
 
-### 2.1. Pré-requis
+---
 
-Avant de commencer, il est impératif que les conditions suivantes soient respectées :
+## 📂 Structure du projet
 
-- **Docker** doit être installé et correctement configuré sur le système où le serveur Minecraft sera déployé.
-- Le fichier **`server.jar`** (le fichier exécutable du serveur Minecraft) doit être présent à la racine du projet, c'est-à-dire au même niveau que le dossier `fusada` qui contient les scripts et le Dockerfile.
-- Le dossier **`fusada`** doit contenir les scripts `fusada-config.sh`, `fusada-lancement.sh`, `fusada-console.sh`, `configuration-rcon.sh` ainsi que le Dockerfile.
-
-### 2.2. Installation de MCRCON
-
-MCRCON est nécessaire pour interagir avec la console du serveur Minecraft via RCON. Pour l'installer, suivez ces étapes :
-
-```bash
-git clone https://github.com/Tiiffi/mcrcon.git
-cd mcrcon
-make
-sudo make install
+```
+fusada/
+├── README.md                # 📖 Documentation
+├── config.sh                # ⚙️ Configuration centrale
+├── dockerfile               # 🏗️ Image Docker du serveur
+├── lancement.sh             # 🚀 Lancer / construire le serveur
+├── arreter-serveur.sh       # 🛑 Stop + rm du conteneur
+├── redemarrer-serveur.sh    # 🔄 Restart complet (stop + rm + lancement)
+├── console.sh               # 📜 Voir les logs (avec couleurs ou attach)
+├── cli-rcon.sh              # ⌨️ Console RCON interactive ou one-shot
+└── configuration-rcon.sh    # 🔧 Auto-configure RCON dans server.properties
 ```
 
-### 2.3. Clonage du Projet
+---
 
-1. **Cloner le dépôt du projet** : Le projet doit être cloné dans un répertoire nommé `fusada`, qui doit être placé au même niveau que le fichier `server.jar`.
+## ⚙️ Les scripts disponibles
 
-   ```bash
-   git clone <url-du-dépôt-git> fusada
-   ```
+### 1. `config.sh`
 
-   Assurez-vous que le dépôt est cloné dans le répertoire `fusada`, qui doit être situé au même endroit que le `server.jar`.
+**Configuration centrale** du serveur Minecraft.
 
-### 2.4. Configuration Initiale
+Variables principales :
 
-1. **Vérifier la présence du fichier de configuration** : Le script `fusada-config.sh` doit être présent dans le dossier `fusada`. Ce fichier contient les paramètres de configuration nécessaires pour le déploiement du serveur.
+* `NOM_CONTENEUR` : nom du conteneur Docker
+* `MC_VERSION` : version du serveur (ex: `1.21.6`) → détermine automatiquement l’image Java (`openjdk:XX-slim`)
+* `PORT_SERVEUR` : port du serveur Minecraft (TCP/UDP)
+* `RCON_PORT`, `RCON_PASSWORD` : config RCON
+* `ATTACH_CONSOLE=yes|no` : suivre les logs après lancement ou pas
+* `USE_RESOURCE_LIMITS=yes|no`, `LIMIT_CPU`, `LIMIT_MEMORY` : limites CPU/RAM
+* `VOICECHAT_PORT`, `DISCORDSRV_PORT`, `BLUEMAP_PORT` : ports spéciaux à ouvrir en TCP/UDP
+* `ADDITIONAL_PORTS_BOTH/TCP/UDP` : ports personnalisés
+* `JAVA_OPTS` : options Java (ex: `-Xms2G -Xmx6G`)
 
-   - Si ce fichier n'existe pas, il est nécessaire de le créer en se basant sur l'exemple fourni dans la documentation.
-   - Les valeurs par défaut définies dans `fusada-config.sh` sont adéquates pour une configuration standard, mais peuvent être modifiées en fonction des besoins spécifiques.
+---
 
-2. **Éditer le fichier de configuration (optionnel)** : Si des modifications sont nécessaires, ouvrez `fusada-config.sh` dans un éditeur de texte et ajustez les paramètres tels que le port du serveur, le nom du conteneur, et les limites de ressources.
+### 2. `dockerfile`
 
-### 2.5. Lancement du Serveur Minecraft
+Image Docker de base :
 
-1. **Rendre les scripts exécutables** : Avant de lancer le script principal, il est nécessaire de rendre les scripts exécutables :
-
-   ```bash
-   chmod +x fusada/fusada-config.sh
-   chmod +x fusada/fusada-lancement.sh
-   chmod +x fusada/fusada-console.sh
-   chmod +x fusada/configuration-rcon.sh
-   ```
-
-2. **Exécuter le script principal** : Le script `fusada-lancement.sh` doit être exécuté pour lancer le serveur Minecraft dans un conteneur Docker :
-
-   ```bash
-   ./fusada/fusada-lancement.sh
-   ```
-
-3. **Suivre les messages affichés** : Le script affichera des messages en temps réel indiquant le statut des différentes étapes, telles que la construction de l'image Docker, la gestion des conteneurs existants, et le lancement du serveur Minecraft. Les messages colorés aideront à identifier les succès (en vert), les informations (en bleu), et les erreurs potentielles (en rouge).
-
-### 2.6. Interaction avec la Console du Serveur Minecraft
-
-1. **Afficher la console du serveur Minecraft** : Pour voir la console du serveur, utilisez le script `fusada-console.sh` :
-
-   ```bash
-   ./fusada/fusada-console.sh
-   ```
-
-2. **Envoyer des commandes au serveur Minecraft** : Pour envoyer des commandes dans la console, utiliser le script `fusada-cli-rcon.sh`.
-3. 
-   Tapez vos commandes dans la console et appuyez sur `Entrée`. Pour quitter la session de console, tapez `exit`.
-
-### 2.7. Gestion du Serveur Minecraft
-
-- **Arrêt du serveur** : Pour arrêter le serveur Minecraft en cours d'exécution, utilisez le script suivant :
+* Utilise l’`ARG BASE_IMAGE` choisi automatiquement en fonction de `MC_VERSION` (Java 8, 11, 16, 17, 21…).
+* Dossier de travail `/minecraft`
+* Démarre le serveur avec :
 
   ```bash
-  ./fusada/arreter-serveur.sh
+  java ${JAVA_OPTS} -jar server.jar nogui
   ```
 
-- **Redémarrage du serveur** : Pour redémarrer le serveur sans avoir à reconstruire l'image Docker, utilisez le script suivant :
+---
+
+### 3. `lancement.sh`
+
+**Lance le serveur Minecraft dans Docker** 🚀
+
+Fonctionnalités :
+
+* Vérifie Docker, `eula.txt`, `server.properties`.
+* Construit l’image avec la bonne base Java.
+* Stoppe + supprime un conteneur existant du même nom.
+* Monte le volume (`$SERVER_DIR:/minecraft`).
+* Expose automatiquement tous les ports configurés (TCP/UDP).
+* Lance le conteneur avec `--restart unless-stopped`.
+* Option : suivre les logs directement (`ATTACH_CONSOLE=yes`).
+
+Exemple :
+
+```bash
+./lancement.sh
+```
+
+---
+
+### 4. `arreter-serveur.sh`
+
+**Stoppe et supprime** le conteneur 🛑
+
+```bash
+./arreter-serveur.sh
+```
+
+---
+
+### 5. `redemarrer-serveur.sh`
+
+**Redémarre complètement** le serveur 🔄
+(équivaut à stop + rm + lancement)
+
+```bash
+./redemarrer-serveur.sh
+```
+
+---
+
+### 6. `console.sh`
+
+Affiche les **logs du conteneur** 📜
+
+Deux modes :
+
+* **Logs (défaut)** → `docker logs -f --raw` (garde les couleurs ANSI)
+* **Attach** → `docker attach` (console brute avec couleurs garanties, sortir avec `Ctrl+P` puis `Ctrl+Q`)
+
+Exemples :
+
+```bash
+./console.sh              # logs avec couleurs
+./console.sh --mode attach  # attach direct à la console
+./console.sh --since 10m    # logs des 10 dernières minutes
+```
+
+---
+
+### 7. `cli-rcon.sh`
+
+Console **RCON** interactive ou en one-shot ⌨️
+
+* Utilise `mcrcon` (doit être installé).
+* Interactive :
 
   ```bash
-  ./fusada/redemarrer-serveur.sh
+  ./cli-rcon.sh
+  > say Bonjour !
+  > time set day
+  > exit
   ```
-
-- **Démarrage du serveur** : Pour démarrer le serveur si le conteneur existe mais est arrêté, utilisez le script suivant :
+* One-shot (idéal pour scripts/CI) :
 
   ```bash
-  ./fusada/demarrer-serveur.sh
+  ./cli-rcon.sh -c "say Hello depuis Fusada"
+  ./cli-rcon.sh "whitelist add Siwa"   # alias accepté
   ```
 
-- **Affichage des logs du serveur** : Pour suivre les logs du serveur en temps réel, utilisez le script suivant :
+Options :
+
+* `-c "commande"` → envoie une seule commande et sort
+* `--no-config` → n’appelle pas `configuration-rcon.sh` (utilise les valeurs actuelles)
+
+---
+
+### 8. `configuration-rcon.sh`
+
+Configure automatiquement **RCON** dans `server.properties` 🔧
+
+* Active `enable-rcon=true` si nécessaire
+* Met à jour/ajoute `rcon.password` et `rcon.port`
+* Redémarre le conteneur si une modification est appliquée
+
+Exemple :
+
+```bash
+./configuration-rcon.sh ./fusada ./serveur
+```
+
+---
+
+## ✨ Fonctionnalités principales
+
+* 🔥 **Gestion complète du cycle de vie** du conteneur Minecraft (start/stop/restart).
+* 📂 **Persistance des données** via volume hôte.
+* 👤 **UID/GID de l’utilisateur hôte** → pas de fichiers root à manipuler.
+* 🔁 **Redémarrage auto** après crash/reboot VPS (`--restart unless-stopped`).
+* 🧩 **Sélection auto de Java** en fonction de `MC_VERSION`.
+* 🔐 **RCON auto-configuré** et utilisable directement (interactive ou one-shot).
+* 🎨 **Logs colorés** (support ANSI, attach direct dispo).
+* 🔌 **Ports flexibles** : Minecraft, RCON, VoiceChat, BlueMap, DiscordSRV, plus des ports custom TCP/UDP.
+* 🧮 **Limites CPU/RAM optionnelles**.
+* 💡 **Extensible** (scripts modulaires, facile à intégrer dans CI/CD ou outils de monitoring).
+
+---
+
+## 🚀 Exemples d’utilisation courante
+
+### Lancer le serveur
+
+```bash
+./lancement.sh
+```
+
+### Voir les logs (avec couleurs)
+
+```bash
+./console.sh
+```
+
+### Attacher à la console brute
+
+```bash
+./console.sh --mode attach
+```
+
+### Arrêter proprement
+
+```bash
+./arreter-serveur.sh
+```
+
+### Redémarrer complètement
+
+```bash
+./redemarrer-serveur.sh
+```
+
+### Envoyer une commande RCON
+
+```bash
+./cli-rcon.sh -c "say Hello World"
+```
+
+### Console RCON interactive
+
+```bash
+./cli-rcon.sh
+> time set day
+> op Siwa
+> exit
+```
+
+---
+
+## 📌 Pré-requis
+
+* Debian/Ubuntu avec `docker` et `docker compose` installés
+* `mcrcon` (console RCON) :
 
   ```bash
-  ./fusada/afficher-console.sh
+  sudo apt update && sudo apt install -y mcrcon
   ```
+* Facultatif mais recommandé : `rlwrap` pour l’historique des commandes dans RCON
 
-## 3. Avertissements et Précautions
-
-- **Compatibilité avec Minecraft** : Toujours vérifier que la version de Java utilisée (OpenJDK 21) est compatible avec la version de Minecraft en cours d'exécution. Certaines versions de Minecraft peuvent nécessiter des versions spécifiques de Java pour fonctionner correctement.
-
-- **Gestion des ressources** : Si les ressources sont limitées sur le système hôte, il est recommandé de définir les limites de CPU et de mémoire dans le fichier de configuration (`fusada-config.sh`). Cela évitera que le serveur Minecraft n'utilise trop de ressources, ce qui pourrait impacter les autres services en cours d'exécution sur le même système.
-
-- **Test dans un environnement de développement** : Avant de déployer en production, il est conseillé de tester le script et la configuration dans un environnement de développement pour s'assurer que tout fonctionne comme prévu.
-
-- **Sauvegardes régulières** : Avant d'apporter des modifications significatives ou de mettre à jour l'environnement, il est crucial de réaliser des sauvegardes complètes des données du serveur Minecraft pour éviter toute perte de données.
+  ```bash
+  sudo apt install -y rlwrap
+  ```
