@@ -182,6 +182,50 @@ VOLUME_FLAG=( -v "${SERVER_DIR}:/minecraft" )
 # 🔁 Restart policy
 RESTART_FLAG=( --restart "${RESTART_POLICY}" )
 
+# 🔤 Variables d'env JVM (auto Xmx si limites actives et pas de JAVA_OPTS défini)
+ENV_FLAGS=()
+
+# Si l'admin a défini JAVA_OPTS dans config.sh, on le respecte et on l'injecte tel quel
+if [ -n "${JAVA_OPTS:-}" ]; then
+  echo -e "${BLUE}${info} JAVA_OPTS défini manuellement → ${JAVA_OPTS}${NC}"
+  ENV_FLAGS+=( -e "JAVA_TOOL_OPTIONS=${JAVA_OPTS}" )
+else
+  # Fonction pour convertir LIMIT_MEMORY en MB (supporte suffixes g/G/m/M)
+  to_mb() {
+    local v="$1"
+    case "$v" in
+      *[gG]) echo $(( ${v%[gG]} * 1024 )) ;;
+      *[mM]) echo $(( ${v%[mM]} )) ;;
+      "")    echo 0 ;;
+      *)     echo "$v" ;;  # si déjà en MB ou format numérique brut
+    esac
+  }
+
+  if [ "${USE_RESOURCE_LIMITS:-no}" = "yes" ] && [ -n "${LIMIT_MEMORY:-}" ]; then
+    limit_mb="$(to_mb "$LIMIT_MEMORY")"
+    if [ "$limit_mb" -gt 0 ]; then
+      # Heuristique: Xmx = 80% de la limite - 1024 MB d'overhead, min 1024 MB
+      heap_mb=$(( limit_mb * 80 / 100 - 1024 ))
+      [ "$heap_mb" -lt 1024 ] && heap_mb=1024
+      xms_mb=$(( heap_mb / 2 ))
+      jvm_auto="-Xms${xms_mb}M -Xmx${heap_mb}M -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication"
+      echo -e "${BLUE}${info} AUTO-JVM: LIMIT_MEMORY=${LIMIT_MEMORY} → -Xms=${xms_mb}M, -Xmx=${heap_mb}M${NC}"
+      ENV_FLAGS+=( -e "JAVA_TOOL_OPTIONS=${jvm_auto}" )
+    else
+      # Limite activée mais valeur non exploitable → fallback en pourcentages
+      jvm_pct="-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70 -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication"
+      echo -e "${YELLOW}${warn} LIMIT_MEMORY vide ou invalide → fallback pourcentages (35/70%).${NC}"
+      ENV_FLAGS+=( -e "JAVA_TOOL_OPTIONS=${jvm_pct}" )
+    fi
+  else
+    # Pas de limites Docker → utiliser des pourcentages (respecte la RAM vue par la JVM)
+    jvm_pct="-XX:InitialRAMPercentage=25 -XX:MaxRAMPercentage=70 -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication"
+    echo -e "${BLUE}${info} Pas de limites Docker → JVM en pourcentages (Initial 25% / Max 70%).${NC}"
+    ENV_FLAGS+=( -e "JAVA_TOOL_OPTIONS=${jvm_pct}" )
+  fi
+fi
+
+
 # 🚀 Run !
 echo -e "${BLUE}${info} Lancement du conteneur '${NOM_CONTENEUR}'...${NC}"
 docker run -d \
@@ -190,6 +234,7 @@ docker run -d \
   "${LIMITS[@]}" \
   "${VOLUME_FLAG[@]}" \
   "${PORT_FLAGS[@]}" \
+  "${ENV_FLAGS[@]}" \
   --name "${NOM_CONTENEUR}" \
   minecraft-server-image
 
