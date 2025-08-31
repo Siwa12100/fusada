@@ -3,20 +3,16 @@
 #  Base Java choisie dynamiquement via --build-arg BASE_IMAGE
 # ============================================
 
-# 🧱 Image de base passée par build-arg (défaut: openjdk:21-slim)
 ARG BASE_IMAGE=openjdk:21-slim
 FROM ${BASE_IMAGE}
 
-# 📁 Dossier de travail dans le conteneur
 WORKDIR /minecraft
 
-# 🔧 Variables (optionnelles) passées au build
+# Permet de fournir JAVA_OPTS au build (facultatif) puis de l'avoir en ENV
 ARG JAVA_OPTS=""
+ENV JAVA_OPTS=${JAVA_OPTS}
 
-# ⛏️ (Optionnel) tu peux installer utilitaires si besoin :
-# RUN apt-get update && apt-get install -y bash curl jq && rm -rf /var/lib/apt/lists/*
+# RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# 🏁 Commande de lancement
-# - JAVA_OPTS permet d’injecter Xms/Xmx ou autres options GC si défini
-# - server.jar doit être présent sur le volume /minecraft (monté par lancement.sh)
-CMD [ "bash", "-lc", 'exec java ${JAVA_OPTS:+$JAVA_OPTS} -jar server.jar nogui' ]
+# Lancement: /bin/sh -lc (pas besoin de bash). JSON exec form → OK signaux & pas d’ambiguïtés.
+CMD ["/bin/sh","-lc","exec java ${JAVA_OPTS:+$JAVA_OPTS} -jar server.jar nogui"]
