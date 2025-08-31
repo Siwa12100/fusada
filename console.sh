@@ -35,8 +35,9 @@ while [[ $# -gt 0 ]]; do
     --raw) RAW="${2:-auto}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo -e "${YELLOW}${warn} Option inconnue: $1${NC}"; usage; exit 1 ;;
-  endcase
+  esac
 done
+
 
 # 📁 Chemins
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
