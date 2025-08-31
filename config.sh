@@ -1,25 +1,55 @@
 #!/bin/bash
+# ============================================
+#  Configuration Fusada - Serveur Minecraft
+#  (sourcée par lancement.sh)
+# ============================================
 
-# Configuration par défaut pour le serveur Minecraft
-
-# Nom du conteneur Docker pour le serveur Minecraft
+# 🔤 Nom du conteneur Docker
 NOM_CONTENEUR=${NOM_CONTENEUR:-"minecraft-serveur"}
 
-# Port sur lequel le serveur Minecraft est accessible
+# 🧩 Version Minecraft (ex: 1.21.6, 1.20.4, 1.17.1, 1.12.2, ...)
+# Sert à choisir automatiquement la version de Java dans l'image Docker.
+MC_VERSION=${MC_VERSION:-"1.21.6"}
+
+# 🌐 Port public côté hôte pour le jeu
 PORT_SERVEUR=${PORT_SERVEUR:-25565}
 
-# Port pour RCON
+# 🔐 RCON (TCP uniquement)
 RCON_PORT=${RCON_PORT:-25575}
-
-# Mot de passe pour RCON
 RCON_PASSWORD=${RCON_PASSWORD:-"mdpdefaut"}
 
-# Activer ou désactiver l'attachement automatique à la console après le lancement
+# 🖥️ Attacher la console après le lancement ? (yes/no)
 ATTACH_CONSOLE=${ATTACH_CONSOLE:-"yes"}
 
-# Limitation des ressources (RAM et CPU)
-LIMIT_CPU=${LIMIT_CPU:-""}          # Exemple : "2" pour limiter à 2 CPUs, ou laisser vide pour ne pas limiter
-LIMIT_MEMORY=${LIMIT_MEMORY:-""}    # Exemple : "2g" pour limiter à 2 Go de RAM, ou laisser vide pour ne pas limiter
+# 🔁 Politique de restart Docker (reboot/crash)
+RESTART_POLICY=${RESTART_POLICY:-"unless-stopped"}
 
-# Option pour activer/désactiver la limitation des ressources
-USE_RESOURCE_LIMITS=${USE_RESOURCE_LIMITS:-"no"}  # "yes" pour activer les limites de ressources
+# 👤 Faire tourner le process dans le conteneur avec l’UID/GID de l’utilisateur hôte
+RUN_AS_HOST_USER=${RUN_AS_HOST_USER:-"yes"}
+
+# 🧹 Corriger les permissions (chown -R) au démarrage ?
+FIX_OWNERSHIP_ON_START=${FIX_OWNERSHIP_ON_START:-"no"}
+
+# 🧮 Limites de ressources
+USE_RESOURCE_LIMITS=${USE_RESOURCE_LIMITS:-"no"}
+LIMIT_CPU=${LIMIT_CPU:-""}         # ex: "2"
+LIMIT_MEMORY=${LIMIT_MEMORY:-""}   # ex: "6g"
+
+# 📦 (Avancé) Bind sur une IP précise de l’hôte (sinon vide)
+BIND_IP=${BIND_IP:-""}
+
+# ============================
+#  Ports services “spéciaux”
+# ============================
+# Ouvrir TCP **et** UDP pour ces services si définis (non vides)
+VOICECHAT_PORT=${VOICECHAT_PORT:-""}     # ex: 24454 (Simple Voice Chat)
+DISCORDSRV_PORT=${DISCORDSRV_PORT:-""}   # ex: 24654 (si besoin)
+BLUEMAP_PORT=${BLUEMAP_PORT:-""}         # ex: 8100 (web server BlueMap)
+
+# Ports additionnels
+ADDITIONAL_PORTS_BOTH=${ADDITIONAL_PORTS_BOTH:-""}  # "24753 30000 30001"
+ADDITIONAL_PORTS_TCP=${ADDITIONAL_PORTS_TCP:-""}    # "27015 27016"
+ADDITIONAL_PORTS_UDP=${ADDITIONAL_PORTS_UDP:-""}    # "19132"
+
+# 🧪 Options Java supplémentaires (facultatif), ex: "-Xms2G -Xmx6G"
+JAVA_OPTS=${JAVA_OPTS:-""}

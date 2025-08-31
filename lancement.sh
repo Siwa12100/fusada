@@ -1,80 +1,207 @@
 #!/bin/bash
+set -euo pipefail
 
-# Définir les couleurs pour les messages dans la console
-BLUE='\033[1;34m'
-GREEN='\033[1;32m'
-RED='\033[1;31m'
-NC='\033[0m' # No Color
+# 🎨 Couleurs & emojis
+BLUE='\033[1;34m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; RED='\033[1;31m'; NC='\033[0m'
+ok="✅"; info="ℹ️"; warn="⚠️"; err="❌"; build="🛠️"; rocket="🚀"; port="🔌"
 
-# Obtenir le chemin du script et le répertoire du serveur
+# 📁 Chemins
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SERVER_DIR=$(dirname "$SCRIPT_DIR")
-
-# Vérification de l'existence du fichier de configuration
 CONFIG_FILE="$SCRIPT_DIR/config.sh"
+DOCKERFILE_PATH="$SCRIPT_DIR/dockerfile"
+
+echo -e "${BLUE}${info} Fusada - Lancement serveur Minecraft${NC}"
+echo -e "${BLUE}${info} Script : ${SCRIPT_DIR}${NC}"
+echo -e "${BLUE}${info} Dossier serveur (monté en volume) : ${SERVER_DIR}${NC}"
+
+# 🔧 Charger la config
 if [ ! -f "$CONFIG_FILE" ]; then
-    echo -e "${RED}[fusada-lancement : non défini] --> ERREUR : Le fichier de configuration ${CONFIG_FILE} est introuvable.${NC}"
-    exit 1
-else
-    echo -e "${BLUE}[fusada-lancement : non défini] --> Chargement de la configuration depuis ${CONFIG_FILE}...${NC}"
-    source "$CONFIG_FILE"
-    echo -e "${GREEN}[fusada-lancement : ${NOM_CONTENEUR}] --> Configuration chargée avec succès.${NC}"
+  echo -e "${RED}${err} Config introuvable : ${CONFIG_FILE}${NC}"
+  exit 1
 fi
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+echo -e "${GREEN}${ok} Config chargée (${CONFIG_FILE})${NC}"
 
-# Vérification de l'installation de Docker
-if ! command -v docker &> /dev/null; then
-    echo -e "${RED}[fusada-lancement : ${NOM_CONTENEUR}] --> ERREUR : Docker n'est pas installé ou accessible.${NC}"
-    exit 1
+# 🐳 Vérifier Docker
+if ! command -v docker >/dev/null 2>&1; then
+  echo -e "${RED}${err} Docker n'est pas installé ou non accessible dans \$PATH${NC}"
+  exit 1
 fi
+echo -e "${GREEN}${ok} Docker détecté${NC}"
 
-# Vérification de l'existence de eula.txt et création si nécessaire
+# 🧾 EULA
 EULA_FILE="$SERVER_DIR/eula.txt"
 if [ ! -f "$EULA_FILE" ]; then
-    echo -e "${BLUE}[fusada-lancement : ${NOM_CONTENEUR}] --> Le fichier eula.txt est introuvable. Création du fichier avec eula=true...${NC}"
-    echo "eula=true" > "$EULA_FILE"
-    echo -e "${GREEN}[fusada-lancement : ${NOM_CONTENEUR}] --> Fichier eula.txt créé avec succès.${NC}"
+  echo -e "${YELLOW}${warn} eula.txt absent → création avec eula=true${NC}"
+  echo "eula=true" > "$EULA_FILE"
+else
+  echo -e "${GREEN}${ok} eula.txt présent${NC}"
 fi
 
-# Vérification de l'existence de server.properties
+# 🧰 RCON (si server.properties présent)
 SERVER_PROPERTIES="$SERVER_DIR/server.properties"
 if [ -f "$SERVER_PROPERTIES" ]; then
-    echo -e "${BLUE}[fusada-lancement : ${NOM_CONTENEUR}] --> Le fichier server.properties existe. Configuration de RCON...${NC}"
+  if [ -x "$SCRIPT_DIR/configuration-rcon.sh" ]; then
+    echo -e "${BLUE}${info} Configuration RCON via configuration-rcon.sh${NC}"
     "$SCRIPT_DIR/configuration-rcon.sh" "$SCRIPT_DIR" "$SERVER_DIR"
+  else
+    echo -e "${YELLOW}${warn} configuration-rcon.sh introuvable ou non exécutable → ignoré${NC}"
+  fi
 else
-    echo -e "${RED}[fusada-lancement : ${NOM_CONTENEUR}] --> AVERTISSEMENT : Le fichier server.properties est introuvable. Configuration de RCON ignorée.${NC}"
+  echo -e "${YELLOW}${warn} server.properties absent → skip configuration RCON${NC}"
 fi
 
-# Construction de l'image Docker
-docker build -t minecraft-server-image -f "$SCRIPT_DIR/dockerfile" "$SCRIPT_DIR"
-
-# Vérification si un conteneur existant porte le même nom
-if [ "$(docker ps -aq -f name=$NOM_CONTENEUR)" ]; then
-    echo -e "${RED}[fusada-lancement : ${NOM_CONTENEUR}] --> Un conteneur avec le nom $NOM_CONTENEUR existe déjà. Arrêt et suppression...${NC}"
-    docker stop $NOM_CONTENEUR
-    docker rm $NOM_CONTENEUR
+# 👤 Permissions : chown initial (optionnel)
+if [ "${FIX_OWNERSHIP_ON_START}" = "yes" ]; then
+  echo -e "${BLUE}${info} Correction des permissions (chown -R $(id -un):$(id -gn)) sur ${SERVER_DIR}${NC}"
+  sudo chown -R "$(id -u)":"$(id -g)" "$SERVER_DIR" || {
+    echo -e "${YELLOW}${warn} chown a échoué (droits sudo requis ?). Continue quand même.${NC}"
+  }
 fi
 
-# Construction de l'option de limitation des ressources
-LIMITS=""
-if [ "$USE_RESOURCE_LIMITS" = "yes" ]; then
-    if [ -n "$LIMIT_CPU" ]; then
-        LIMITS="$LIMITS --cpus=$LIMIT_CPU"
-    fi
-    if [ -n "$LIMIT_MEMORY" ]; then
-        LIMITS="$LIMITS --memory=$LIMIT_MEMORY"
-    fi
-fi  # Fermeture correcte du bloc if ici
+# ☕ Sélection auto de l'image Java selon MC_VERSION
+choose_base_image() {
+  local v="$1"
+  # Normalisation simple : garde "x.y.z" ou "x.y"
+  # Règles (mémo) :
+  # 1.21.x           → openjdk:21-slim
+  # 1.20.5 → 1.20.6  → openjdk:21-slim
+  # 1.18 → 1.20.4    → openjdk:17-jdk-slim
+  # 1.17.x           → openjdk:16-jdk-slim
+  # 1.13 → 1.16.5    → openjdk:11-jre-slim
+  # 1.8 → 1.12.2     → openjdk:8-jre-slim
+  # 1.7.x (hist.)    → openjdk:8-jre-slim (compat)
+  case "$v" in
+    1.21|1.21.*)   echo "openjdk:21-slim" ;;
+    1.20.5|1.20.5*|1.20.6|1.20.6*) echo "openjdk:21-slim" ;;
+    1.18|1.18.*|1.19|1.19.*|1.20|1.20.[0-4]|1.20.[0-4]*) echo "openjdk:17-jdk-slim" ;;
+    1.17|1.17.*)   echo "openjdk:16-jdk-slim" ;;
+    1.13|1.13.*|1.14|1.14.*|1.15|1.15.*|1.16|1.16.*) echo "openjdk:11-jre-slim" ;;
+    1.8|1.8.*|1.9|1.9.*|1.10|1.10.*|1.11|1.11.*|1.12|1.12.*|1.7|1.7.*) echo "openjdk:8-jre-slim" ;;
+    *) echo "openjdk:21-slim" ;; # défaut raisonnable pour versions récentes
+  esac
+}
 
-# Lancement du conteneur Docker avec ou sans limite de ressources et en montant un volume
-if [ -n "$LIMITS" ]; then
-    echo -e "${BLUE}[fusada-lancement : ${NOM_CONTENEUR}] --> Lancement du conteneur avec limites de ressources : $LIMITS...${NC}"
-    docker run -d $LIMITS -v "$SERVER_DIR:/minecraft" -p $PORT_SERVEUR:25565 -p $RCON_PORT:$RCON_PORT --name $NOM_CONTENEUR minecraft-server-image
+BASE_IMAGE=$(choose_base_image "${MC_VERSION}")
+echo -e "${BLUE}${info} MC_VERSION=${MC_VERSION} → Image Java choisie : ${BASE_IMAGE}${NC}"
+
+# 🧱 Construire l'image Docker avec ARG BASE_IMAGE + JAVA_OPTS
+if [ -f "$DOCKERFILE_PATH" ]; then
+  echo -e "${build}  Build image locale 'minecraft-server-image' depuis ${DOCKERFILE_PATH}"
+  docker build \
+    --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+    --build-arg JAVA_OPTS="${JAVA_OPTS}" \
+    -t minecraft-server-image \
+    -f "$DOCKERFILE_PATH" "$SCRIPT_DIR"
+  echo -e "${GREEN}${ok} Image construite${NC}"
 else
-    echo -e "${BLUE}[fusada-lancement : ${NOM_CONTENEUR}] --> Lancement du conteneur sans limite de ressources...${NC}"
-    docker run -d -v "$SERVER_DIR:/minecraft" -p $PORT_SERVEUR:25565 -p $RCON_PORT:$RCON_PORT --name $NOM_CONTENEUR minecraft-server-image
+  echo -e "${YELLOW}${warn} Aucun dockerfile trouvé → j'essaie d'utiliser l'image 'minecraft-server-image' existante${NC}"
 fi
 
-echo -e "${GREEN}[fusada-lancement : ${NOM_CONTENEUR}] --> Le serveur Minecraft est maintenant en cours d'exécution dans le conteneur Docker.${NC}"
+# 🛑 Si un conteneur existe déjà avec ce nom → stop & rm
+if docker ps -a --format '{{.Names}}' | grep -qx "${NOM_CONTENEUR}"; then
+  echo -e "${YELLOW}${warn} Conteneur '${NOM_CONTENEUR}' existe → stop & rm${NC}"
+  docker stop "${NOM_CONTENEUR}" || true
+  docker rm   "${NOM_CONTENEUR}" || true
+fi
 
-# Affichage des logs du conteneur en temps réel
-docker logs -f $NOM_CONTENEUR
+# 🧮 Limites CPU/RAM
+LIMITS=()
+if [ "${USE_RESOURCE_LIMITS}" = "yes" ]; then
+  [ -n "${LIMIT_CPU}" ] && LIMITS+=( "--cpus=${LIMIT_CPU}" )
+  [ -n "${LIMIT_MEMORY}" ] && LIMITS+=( "--memory=${LIMIT_MEMORY}" )
+  echo -e "${BLUE}${info} Limites activées: ${LIMITS[*]:-aucune}${NC}"
+else
+  echo -e "${BLUE}${info} Limites désactivées${NC}"
+fi
+
+# 👤 Exécuter avec l’UID/GID de l’utilisateur hôte
+USER_FLAG=()
+if [ "${RUN_AS_HOST_USER}" = "yes" ]; then
+  USER_FLAG=( -u "$(id -u)":"$(id -g)" )
+  echo -e "${BLUE}${info} Le conteneur tournera en UID:GID $(id -u):$(id -g) ($(id -un):$(id -gn))${NC}"
+else
+  echo -e "${YELLOW}${warn} RUN_AS_HOST_USER=no → les fichiers créés appartiendront probablement à root${NC}"
+fi
+
+# 🌐 Bind IP (optionnel)
+BIND_PREFIX=""
+if [ -n "${BIND_IP}" ]; then
+  BIND_PREFIX="${BIND_IP}:"
+  echo -e "${BLUE}${info} Les ports seront bind sur ${BIND_IP}${NC}"
+fi
+
+# 🔌 Ports à exposer
+PORT_FLAGS=()
+
+# — Minecraft (TCP & UDP)
+PORT_FLAGS+=( -p "${BIND_PREFIX}${PORT_SERVEUR}:25565/tcp" )
+PORT_FLAGS+=( -p "${BIND_PREFIX}${PORT_SERVEUR}:25565/udp" )
+echo -e "${port} Minecraft: ${PORT_SERVEUR} (tcp/udp)${NC}"
+
+# — RCON (TCP only)
+PORT_FLAGS+=( -p "${BIND_PREFIX}${RCON_PORT}:${RCON_PORT}/tcp" )
+echo -e "${port} RCON: ${RCON_PORT} (tcp)${NC}"
+
+# Helpers d’ouverture
+open_both () {
+  local p="$1"
+  [ -n "$p" ] || return 0
+  PORT_FLAGS+=( -p "${BIND_PREFIX}${p}:${p}/tcp" )
+  PORT_FLAGS+=( -p "${BIND_PREFIX}${p}:${p}/udp" )
+  echo -e "${port} Service: ${p} (tcp/udp)${NC}"
+}
+open_tcp_only () {
+  local p="$1"
+  [ -n "$p" ] || return 0
+  PORT_FLAGS+=( -p "${BIND_PREFIX}${p}:${p}/tcp" )
+  echo -e "${port} Service: ${p} (tcp)${NC}"
+}
+open_udp_only () {
+  local p="$1"
+  [ -n "$p" ] || return 0
+  PORT_FLAGS+=( -p "${BIND_PREFIX}${p}:${p}/udp" )
+  echo -e "${port} Service: ${p} (udp)${NC}"
+}
+
+# — Services spéciaux (TCP & UDP)
+open_both "${VOICECHAT_PORT}"
+open_both "${DISCORDSRV_PORT}"
+open_both "${BLUEMAP_PORT}"
+
+# — Ports additionnels
+for p in ${ADDITIONAL_PORTS_BOTH}; do open_both "${p}"; done
+for p in ${ADDITIONAL_PORTS_TCP};  do open_tcp_only "${p}"; done
+for p in ${ADDITIONAL_PORTS_UDP};  do open_udp_only "${p}"; done
+
+# 🧷 Volume (persistance)
+VOLUME_FLAG=( -v "${SERVER_DIR}:/minecraft" )
+
+# 🔁 Restart policy
+RESTART_FLAG=( --restart "${RESTART_POLICY}" )
+
+# 🚀 Run !
+echo -e "${BLUE}${info} Lancement du conteneur '${NOM_CONTENEUR}'...${NC}"
+docker run -d \
+  "${RESTART_FLAG[@]}" \
+  "${USER_FLAG[@]}" \
+  "${LIMITS[@]}" \
+  "${VOLUME_FLAG[@]}" \
+  "${PORT_FLAGS[@]}" \
+  --name "${NOM_CONTENEUR}" \
+  minecraft-server-image
+
+echo -e "${GREEN}${ok} Conteneur lancé : ${NOM_CONTENEUR}${NC}"
+echo -e "${BLUE}${info} Conseil: assure-toi que Docker démarre au boot :
+    sudo systemctl is-enabled docker || sudo systemctl enable docker${NC}"
+
+# 🪵 Logs
+if [ "${ATTACH_CONSOLE}" = "yes" ]; then
+  echo -e "${rocket} Attache console (Ctrl+C pour quitter, le conteneur reste actif)${NC}"
+  exec docker logs -f "${NOM_CONTENEUR}"
+else
+  echo -e "${rocket} Détaché. Pour voir les logs :
+    docker logs -f ${NOM_CONTENEUR}${NC}"
+fi
