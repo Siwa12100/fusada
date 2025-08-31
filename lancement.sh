@@ -141,9 +141,9 @@ PORT_FLAGS+=( -p "${BIND_PREFIX}${PORT_SERVEUR}:25565/tcp" )
 PORT_FLAGS+=( -p "${BIND_PREFIX}${PORT_SERVEUR}:25565/udp" )
 echo -e "${port} Minecraft: ${PORT_SERVEUR} (tcp/udp)${NC}"
 
-# — RCON (TCP only)
-PORT_FLAGS+=( -p "${BIND_PREFIX}${RCON_PORT}:${RCON_PORT}/tcp" )
-echo -e "${port} RCON: ${RCON_PORT} (tcp)${NC}"
+# — RCON (TCP only, bind seulement sur localhost)
+PORT_FLAGS+=( -p "127.0.0.1:${RCON_PORT}:${RCON_PORT}/tcp" )
+echo -e "${port} RCON: ${RCON_PORT} (tcp, localhost only)${NC}"
 
 # Helpers d’ouverture
 open_both () {
@@ -224,7 +224,6 @@ else
     ENV_FLAGS+=( -e "JAVA_TOOL_OPTIONS=${jvm_pct}" )
   fi
 fi
-
 
 # 🚀 Run !
 echo -e "${BLUE}${info} Lancement du conteneur '${NOM_CONTENEUR}'...${NC}"
