@@ -254,6 +254,7 @@ Point d'entree recommande:
 Fonctionnement:
 - suit `docker logs -f` et detecte les lignes `Entity uuid already exists`
 - identifie les zones connues via les `cpos=[x, z]`
+- si la zone est inconnue, peut generer une auto-zone via `cpos` (si active)
 - execute une commande kill ciblee via `rcon-cli`
 - enchaine un `save-all` immediat pour persister la correction
 - applique un cooldown par zone pour eviter le spam
@@ -270,6 +271,9 @@ Configuration (config.sh):
 - `ENTITY_WATCHER_LOG_FILE`
 - `ENTITY_WATCHER_UNKNOWN_LOG_FILE`
 - `ENTITY_WATCHER_PID_FILE`
+- `ENTITY_WATCHER_AUTO_CPOS_ENABLED`
+- `ENTITY_WATCHER_AUTO_Y_PADDING`
+- `ENTITY_WATCHER_AUTO_DY`
 - `ENTITY_WATCHER_ZONE_OVERWORLD_9627_CMD`
 - `ENTITY_WATCHER_ZONE_OVERWORLD_5300_CMD`
 - `ENTITY_WATCHER_ZONE_NETHER_1152_CMD`

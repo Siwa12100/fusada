@@ -22,6 +22,9 @@ ENTITY_WATCHER_DOCKER_LOGS_SINCE="${ENTITY_WATCHER_DOCKER_LOGS_SINCE:-10m}"
 ENTITY_WATCHER_LOG_FILE="${ENTITY_WATCHER_LOG_FILE:-logs/fusada-entity-watcher.log}"
 ENTITY_WATCHER_UNKNOWN_LOG_FILE="${ENTITY_WATCHER_UNKNOWN_LOG_FILE:-logs/fusada-entity-watcher-unknown.log}"
 ENTITY_WATCHER_PID_FILE="${ENTITY_WATCHER_PID_FILE:-fusada/.state/entity-watcher.pid}"
+ENTITY_WATCHER_AUTO_CPOS_ENABLED="${ENTITY_WATCHER_AUTO_CPOS_ENABLED:-yes}"
+ENTITY_WATCHER_AUTO_Y_PADDING="${ENTITY_WATCHER_AUTO_Y_PADDING:-16}"
+ENTITY_WATCHER_AUTO_DY="${ENTITY_WATCHER_AUTO_DY:-48}"
 
 ENTITY_WATCHER_ZONE_OVERWORLD_9627_CMD="${ENTITY_WATCHER_ZONE_OVERWORLD_9627_CMD:-/execute in minecraft:overworld run kill @e[x=-9627,y=-1,z=7519,dx=32,dy=32,dz=32,type=!player]}"
 ENTITY_WATCHER_ZONE_OVERWORLD_5300_CMD="${ENTITY_WATCHER_ZONE_OVERWORLD_5300_CMD:-/execute in minecraft:overworld run kill @e[x=-5300,y=75,z=4183,dx=64,dy=32,dz=64,type=!player]}"
@@ -221,6 +224,67 @@ zone_cmd() {
   esac
 }
 
+dimension_to_minecraft_id() {
+  local level_name="$1"
+  case "$level_name" in
+    world) echo "minecraft:overworld" ;;
+    world_nether) echo "minecraft:the_nether" ;;
+    world_the_end) echo "minecraft:the_end" ;;
+    *) echo "" ;;
+  esac
+}
+
+build_auto_zone_from_line() {
+  local line="$1"
+  local pair1 pair2
+  local c1x c1z c2x c2z
+  local dim_raw dim_id
+  local min_cx max_cx min_cz max_cz
+  local x_start x_end z_start z_end dx dz
+  local y_vals min_y_int y_start dy
+  local zone cmd
+
+  pair1=$(echo "$line" | grep -oE "cpos=\[[-0-9]+, [-0-9]+\]" | sed -n '1p' || true)
+  pair2=$(echo "$line" | grep -oE "cpos=\[[-0-9]+, [-0-9]+\]" | sed -n '2p' || true)
+  if [[ -z "$pair1" || -z "$pair2" ]]; then
+    return 1
+  fi
+
+  read -r c1x c1z <<< "$(echo "$pair1" | sed -E 's/cpos=\[([-0-9]+), ([-0-9]+)\]/\1 \2/')"
+  read -r c2x c2z <<< "$(echo "$pair2" | sed -E 's/cpos=\[([-0-9]+), ([-0-9]+)\]/\1 \2/')"
+
+  dim_raw=$(echo "$line" | sed -n "s/.*l='ServerLevel\[\([^]]*\)\]'.*/\1/p" | head -n 1)
+  dim_id="$(dimension_to_minecraft_id "$dim_raw")"
+  if [[ -z "$dim_id" ]]; then
+    return 1
+  fi
+
+  if (( c1x < c2x )); then min_cx=$c1x; max_cx=$c2x; else min_cx=$c2x; max_cx=$c1x; fi
+  if (( c1z < c2z )); then min_cz=$c1z; max_cz=$c2z; else min_cz=$c2z; max_cz=$c1z; fi
+
+  x_start=$(( min_cx * 16 ))
+  x_end=$(( (max_cx + 1) * 16 - 1 ))
+  z_start=$(( min_cz * 16 ))
+  z_end=$(( (max_cz + 1) * 16 - 1 ))
+  dx=$(( x_end - x_start ))
+  dz=$(( z_end - z_start ))
+
+  y_vals=$(echo "$line" | grep -oE "y=-?[0-9]+(\.[0-9]+)?" | head -n 2 | cut -d= -f2 || true)
+  if [[ -n "$y_vals" ]]; then
+    min_y_int=$(echo "$y_vals" | awk 'NR==1{m=$1} {if($1<m)m=$1} END{printf "%d", m}')
+  else
+    min_y_int=64
+  fi
+
+  dy=${ENTITY_WATCHER_AUTO_DY}
+  y_start=$(( min_y_int - ENTITY_WATCHER_AUTO_Y_PADDING ))
+
+  zone="auto_${dim_raw}_${c1x}_${c1z}_${c2x}_${c2z}"
+  cmd="/execute in ${dim_id} run kill @e[x=${x_start},y=${y_start},z=${z_start},dx=${dx},dy=${dy},dz=${dz},type=!player]"
+  echo "${zone}|${cmd}"
+  return 0
+}
+
 run_rcon() {
   local cmd="$1"
   local output
@@ -304,6 +368,7 @@ run_watcher() {
   log "${info} Log inconnus: ${UNKNOWN_LOG_FILE}"
   log "${info} Cooldown: ${ENTITY_WATCHER_COOLDOWN_SECONDS}s"
   log "${info} RCON mode: ${RCON_MODE}"
+  log "${info} Auto cpos: ${ENTITY_WATCHER_AUTO_CPOS_ENABLED} (paddingY=${ENTITY_WATCHER_AUTO_Y_PADDING}, dy=${ENTITY_WATCHER_AUTO_DY})"
 
   docker logs --since "$ENTITY_WATCHER_DOCKER_LOGS_SINCE" -f "$NOM_CONTENEUR" 2>&1 | while IFS= read -r line; do
     if [[ "$line" != *"Entity uuid already exists"* ]]; then
@@ -314,6 +379,20 @@ run_watcher() {
 
     zone="$(zone_from_line "$line")"
     if [[ -z "$zone" ]]; then
+      if [[ "$ENTITY_WATCHER_AUTO_CPOS_ENABLED" == "yes" ]]; then
+        auto_payload="$(build_auto_zone_from_line "$line" || true)"
+        if [[ -n "$auto_payload" ]]; then
+          zone="${auto_payload%%|*}"
+          cmd="${auto_payload#*|}"
+          log "${info} Auto-zone detectee via cpos: ${zone}"
+          if ! kill_zone "$zone" "$cmd"; then
+            log "${err} Echec traitement auto-zone ${zone}"
+            append_unknown "$line"
+          fi
+          continue
+        fi
+      fi
+
       log "${warn} Zone inconnue, entree ajoutee a ${UNKNOWN_LOG_FILE}"
       append_unknown "$line"
       continue
