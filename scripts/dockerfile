@@ -2,7 +2,7 @@
 #  Dockerfile Fusada - Serveur Minecraft
 # ============================================
 
-ARG BASE_IMAGE=openjdk:21-slim
+ARG BASE_IMAGE=jdk:21-ubuntu
 FROM ${BASE_IMAGE}
 
 WORKDIR /minecraft

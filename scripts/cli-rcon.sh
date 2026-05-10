@@ -8,12 +8,22 @@ ok="✅"; info="ℹ️"; warn="⚠️"; err="❌"; plug="🔌"; keyb="⌨️"
 # 🧭 Options: -c "commande" (one-shot), --no-config (ne pas (re)configurer RCON)
 ONE_SHOT=""
 DO_CONFIG=1
+WITH_CONSOLE=1
+CONSOLE_SINCE="30s"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -c|--command) ONE_SHOT="${2:-}"; shift 2 ;;
     --no-config)  DO_CONFIG=0; shift ;;
+    --with-console) WITH_CONSOLE=1; shift ;;
+    --without-console|--no-console) WITH_CONSOLE=0; shift ;;
+    --console-since) CONSOLE_SINCE="${2:-30s}"; shift 2 ;;
     -h|--help)
-      echo "Usage: $0 [-c \"commande\"] [--no-config]"
+      echo "Usage: $0 [-c \"commande\"] [--no-config] [--with-console|--without-console] [--console-since <durée/date>]"
+      echo ""
+      echo "Options utiles:"
+      echo "  --with-console          Active explicitement la console en fond (active par defaut)"
+      echo "  --without-console       Desactive la console en fond"
+      echo "  --console-since <val>   Historique initial pour le flux console (défaut: 30s)"
       exit 0;;
     *) echo -e "${YELLOW}${warn} Option inconnue: $1${NC}"; shift ;;
   esac
@@ -21,15 +31,46 @@ done
 
 # 🗺️ Chemins
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-SERVER_DIR=$(dirname "$SCRIPT_DIR")
-CONFIG_FILE="$SCRIPT_DIR/config.sh"
+FUSADA_DIR=$(dirname "$SCRIPT_DIR")
+SERVER_DIR=$(dirname "$FUSADA_DIR")
+CONFIG_FILE="$FUSADA_DIR/config.sh"
 
-# 🧩 Dépendance mcrcon
-if ! command -v mcrcon >/dev/null 2>&1; then
+# 🧩 Dépendance mcrcon (PATH + emplacements usuels)
+MCRCON_BIN=""
+resolve_mcrcon() {
+  if command -v mcrcon >/dev/null 2>&1; then
+    command -v mcrcon
+    return 0
+  fi
+
+  local candidates=(
+    "$HOME/mcrcon/mcrcon"
+    "$HOME/mcrcon/bin/mcrcon"
+    "$SERVER_DIR/mcrcon/mcrcon"
+    "$SERVER_DIR/mcrcon/bin/mcrcon"
+  )
+
+  local c
+  for c in "${candidates[@]}"; do
+    if [[ -x "$c" ]]; then
+      echo "$c"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+if ! MCRCON_BIN="$(resolve_mcrcon)"; then
   echo -e "${RED}${err} mcrcon n'est pas installé ou accessible.${NC}"
+  echo -e "${BLUE}${info} J'ai cherché dans PATH et aussi :${NC}"
+  echo -e "${BLUE}${info}  - ~/mcrcon/mcrcon${NC}"
+  echo -e "${BLUE}${info}  - ~/mcrcon/bin/mcrcon${NC}"
   echo -e "${BLUE}${info} Installe-le (ex: Debian/Ubuntu) : sudo apt update && sudo apt install -y mcrcon${NC}"
   exit 1
 fi
+
+echo -e "${GREEN}${ok} mcrcon détecté : ${MCRCON_BIN}${NC}"
 
 # 🔧 Config
 if [[ ! -f "$CONFIG_FILE" ]]; then
@@ -66,6 +107,15 @@ if [[ ! -f "$SERVER_PROPERTIES" ]]; then
   exit 1
 fi
 
+if ! command -v docker >/dev/null 2>&1; then
+  echo -e "${RED}${err} Docker non disponible dans le PATH.${NC}"
+  exit 1
+fi
+if ! docker info >/dev/null 2>&1; then
+  echo -e "${RED}${err} Docker installé mais daemon injoignable (service/permissions).${NC}"
+  exit 1
+fi
+
 # 🧪 Le conteneur est-il là / en route ?
 if ! docker ps -a --format '{{.Names}}' | grep -qx "${NOM_CONTENEUR}"; then
   echo -e "${RED}${err} Aucun conteneur nommé '${NOM_CONTENEUR}'. Lance d'abord ton serveur.${NC}"
@@ -88,19 +138,41 @@ fi
 # 🚀 One-shot command ?
 if [[ -n "$ONE_SHOT" ]]; then
   echo -e "${plug} Envoi: ${ONE_SHOT}${NC}"
-  mcrcon -H "${RCON_HOST}" -P "${RCON_PORT}" -p "${RCON_PASSWORD}" "${ONE_SHOT}"
+  "$MCRCON_BIN" -H "${RCON_HOST}" -P "${RCON_PORT}" -p "${RCON_PASSWORD}" "${ONE_SHOT}"
   exit 0
+fi
+
+CONSOLE_PID=""
+cleanup_bg_console() {
+  if [[ -n "${CONSOLE_PID}" ]] && kill -0 "${CONSOLE_PID}" 2>/dev/null; then
+    kill "${CONSOLE_PID}" 2>/dev/null || true
+    wait "${CONSOLE_PID}" 2>/dev/null || true
+  fi
+}
+
+if [[ "$WITH_CONSOLE" -eq 1 ]]; then
+  echo -e "${BLUE}${info} Flux console activé en arrière-plan (since=${CONSOLE_SINCE}).${NC}"
+  echo -e "${YELLOW}${warn} Astuce: la sortie console et ton prompt peuvent se mélanger, c'est normal.${NC}"
+  if docker logs --help 2>&1 | grep -q -- "--raw"; then
+    (docker logs -f --raw --since "${CONSOLE_SINCE}" "${NOM_CONTENEUR}" 2>&1 | sed -u 's/^/[CONSOLE] /') &
+  else
+    (docker logs -f --since "${CONSOLE_SINCE}" "${NOM_CONTENEUR}" 2>&1 | sed -u 's/^/[CONSOLE] /') &
+  fi
+  CONSOLE_PID=$!
+  trap 'cleanup_bg_console; echo; exit 0' INT TERM EXIT
 fi
 
 # 🧑‍💻 Console interactive
 if command -v rlwrap >/dev/null 2>&1; then
   echo -e "${GREEN}${ok} rlwrap détecté → historique & édition de ligne activés.${NC}"
-  READ_CMD=(rlwrap bash -c 'while IFS= read -r -p "> " cmd; do [[ -z "$cmd" ]] && continue; [[ "$cmd" = "exit" ]] && break; mcrcon -H "'"${RCON_HOST}"'" -P "'"${RCON_PORT}"'" -p "'"${RCON_PASSWORD}"'" "$cmd"; done')
+  READ_CMD=(rlwrap bash -c 'while true; do printf "\n\n\n"; IFS= read -r -p "[RCON] > " cmd || break; [[ -z "$cmd" ]] && continue; [[ "$cmd" = "exit" ]] && break; "'"${MCRCON_BIN}"'" -H "'"${RCON_HOST}"'" -P "'"${RCON_PORT}"'" -p "'"${RCON_PASSWORD}"'" "$cmd"; done')
 else
-  READ_CMD=(bash -c 'trap "echo; exit 0" INT; while IFS= read -r -p "> " cmd; do [[ -z "$cmd" ]] && continue; [[ "$cmd" = "exit" ]] && break; mcrcon -H "'"${RCON_HOST}"'" -P "'"${RCON_PORT}"'" -p "'"${RCON_PASSWORD}"'" "$cmd"; done')
+  READ_CMD=(bash -c 'trap "echo; exit 0" INT; while true; do printf "\n\n\n"; IFS= read -r -p "[RCON] > " cmd || break; [[ -z "$cmd" ]] && continue; [[ "$cmd" = "exit" ]] && break; "'"${MCRCON_BIN}"'" -H "'"${RCON_HOST}"'" -P "'"${RCON_PORT}"'" -p "'"${RCON_PASSWORD}"'" "$cmd"; done')
 fi
 
 echo -e "${BLUE}${keyb} Connecté. Tape 'exit' pour quitter.${NC}"
 "${READ_CMD[@]}"
+
+cleanup_bg_console
 
 echo -e "${GREEN}${ok} Session RCON terminée.${NC}"

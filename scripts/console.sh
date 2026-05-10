@@ -6,7 +6,7 @@ BLUE='\033[1;34m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; RED='\033[1;31m'; NC
 ok="✅"; info="ℹ️"; warn="⚠️"; err="❌"; logicon="📜"; plug="🔌"
 
 # 🔧 Options
-MODE="logs"        # logs | attach
+MODE="attach"      # logs | attach
 SINCE=""           # ex: "10m", "1h", "2025-08-31T09:00:00"
 RAW="auto"         # auto | yes | no
 
@@ -15,15 +15,15 @@ usage() {
 Usage: $0 [options]
 
 Options:
-  -m, --mode [logs|attach]   Mode d'affichage (par défaut: logs)
+  -m, --mode [logs|attach]   Mode d'affichage (par défaut: attach)
   -s, --since <durée/date>   Limiter les logs depuis (ex: 10m, 1h, 2025-08-31T09:00:00)
       --raw [auto|yes|no]    Forcer l'utilisation de --raw (par défaut: auto)
   -h, --help                 Afficher cette aide
 
 Exemples:
   $0
-  $0 --mode logs --since 30m
   $0 --mode attach
+  $0 --mode logs --since 30m
 EOF
 }
 
@@ -41,11 +41,16 @@ done
 
 # 📁 Chemins
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-CONFIG_FILE="$SCRIPT_DIR/config.sh"
+FUSADA_DIR=$(dirname "$SCRIPT_DIR")
+CONFIG_FILE="$FUSADA_DIR/config.sh"
 
 # 🐳 Docker
 if ! command -v docker >/dev/null 2>&1; then
   echo -e "${RED}${err} Docker n'est pas installé ou accessible dans \$PATH${NC}"
+  exit 1
+fi
+if ! docker info >/dev/null 2>&1; then
+  echo -e "${RED}${err} Docker est installé mais le daemon est injoignable (service/permissions).${NC}"
   exit 1
 fi
 
@@ -109,8 +114,8 @@ case "$MODE" in
       echo -e "${YELLOW}${warn} Le conteneur n'est pas en cours d'exécution. Les logs 'attach' seront vides.${NC}"
       echo -e "${YELLOW}${warn} Démarre le conteneur ou utilise --mode logs avec --since.${NC}"
     fi
-    echo -e "${plug} ${GREEN}${ok} Attachement direct (couleurs garanties). Quitter sans arrêter: Ctrl+P puis Ctrl+Q.${NC}"
-    exec docker attach "${NOM_CONTENEUR}"
+    echo -e "${plug} ${GREEN}${ok} Attachement direct (couleurs garanties). Quitter sans arrêter: Ctrl+C (sig-proxy désactivé).${NC}"
+    exec docker attach --sig-proxy=false "${NOM_CONTENEUR}"
     ;;
 
   *)

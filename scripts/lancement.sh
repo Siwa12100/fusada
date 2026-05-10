@@ -7,13 +7,47 @@ ok="✅"; info="ℹ️"; warn="⚠️"; err="❌"; build="🛠️"; rocket="🚀
 
 # 📁 Chemins
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-SERVER_DIR=$(dirname "$SCRIPT_DIR")
-CONFIG_FILE="$SCRIPT_DIR/config.sh"
+FUSADA_DIR=$(dirname "$SCRIPT_DIR")
+SERVER_DIR=$(dirname "$FUSADA_DIR")
+CONFIG_FILE="$FUSADA_DIR/config.sh"
 DOCKERFILE_PATH="$SCRIPT_DIR/dockerfile"
 
 echo -e "${BLUE}${info} Fusada - Lancement serveur Minecraft${NC}"
 echo -e "${BLUE}${info} Script : ${SCRIPT_DIR}${NC}"
 echo -e "${BLUE}${info} Dossier serveur (monté en volume) : ${SERVER_DIR}${NC}"
+
+# 🧾 Log4j2: créer une config par défaut si absente
+ensure_log4j2_config() {
+  local log4j2_file="$SERVER_DIR/log4j2.xml"
+
+  if [ "${AUTO_CREATE_LOG4J2:-yes}" != "yes" ]; then
+    echo -e "${YELLOW}${warn} AUTO_CREATE_LOG4J2=no → génération auto de log4j2.xml ignorée${NC}"
+    return 0
+  fi
+
+  if [ -f "$log4j2_file" ]; then
+    echo -e "${GREEN}${ok} log4j2.xml présent (${log4j2_file})${NC}"
+    return 0
+  fi
+
+  cat > "$log4j2_file" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="warn" monitorInterval="5" packages="net.minecrell.terminalconsole,org.fusesource.jansi">
+  <Appenders>
+    <TerminalConsole name="Console">
+      <PatternLayout pattern="%d{HH:mm:ss} %highlight{%-5level}{FATAL=red blink, ERROR=red, WARN=yellow, INFO=green, DEBUG=blue, TRACE=black} %c{1}: %msg%n" disableAnsi="false"/>
+    </TerminalConsole>
+  </Appenders>
+  <Loggers>
+    <Root level="info">
+      <AppenderRef ref="Console"/>
+    </Root>
+  </Loggers>
+</Configuration>
+EOF
+
+  echo -e "${GREEN}${ok} log4j2.xml créé automatiquement (${log4j2_file})${NC}"
+}
 
 # 🔧 Charger la config
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -29,7 +63,30 @@ if ! command -v docker >/dev/null 2>&1; then
   echo -e "${RED}${err} Docker n'est pas installé ou non accessible dans \$PATH${NC}"
   exit 1
 fi
-echo -e "${GREEN}${ok} Docker détecté${NC}"
+if ! docker info >/dev/null 2>&1; then
+  echo -e "${RED}${err} Docker est installé mais le daemon est injoignable (service down ou permissions).${NC}"
+  exit 1
+fi
+echo -e "${GREEN}${ok} Docker détecté et daemon joignable${NC}"
+
+# 🔐 Avertissement mot de passe RCON faible/par défaut
+if [ "${RCON_PASSWORD:-}" = "" ] || [ "${RCON_PASSWORD:-}" = "CHANGE_ME" ] || [ "${RCON_PASSWORD:-}" = "mdpdefaut" ]; then
+  echo -e "${YELLOW}${warn} RCON_PASSWORD est vide ou par défaut. Change-le dans config.sh.${NC}"
+fi
+
+# 🧹 Mise au propre pre-lancement (non interactive)
+if [ "${CLEANUP_ON_LAUNCH:-yes}" = "yes" ]; then
+  if [ -x "$SCRIPT_DIR/mise-au-propre.sh" ]; then
+    echo -e "${BLUE}${info} Exécution de mise-au-propre (mode launch)${NC}"
+    "$SCRIPT_DIR/mise-au-propre.sh" --mode launch
+  else
+    echo -e "${YELLOW}${warn} mise-au-propre.sh introuvable ou non exécutable → skip${NC}"
+  fi
+else
+  echo -e "${YELLOW}${warn} CLEANUP_ON_LAUNCH=no → nettoyage automatique ignoré${NC}"
+fi
+
+ensure_log4j2_config
 
 # 🧾 EULA
 EULA_FILE="$SERVER_DIR/eula.txt"
@@ -55,10 +112,18 @@ fi
 
 # 👤 Permissions : chown initial (optionnel)
 if [ "${FIX_OWNERSHIP_ON_START}" = "yes" ]; then
-  echo -e "${BLUE}${info} Correction des permissions (chown -R $(id -un):$(id -gn)) sur ${SERVER_DIR}${NC}"
-  sudo chown -R "$(id -u)":"$(id -g)" "$SERVER_DIR" || {
-    echo -e "${YELLOW}${warn} chown a échoué (droits sudo requis ?). Continue quand même.${NC}"
-  }
+  echo -e "${BLUE}${info} Vérification des permissions sur ${SERVER_DIR}${NC}"
+  if find "$SERVER_DIR" -xdev \( ! -user "$(id -u)" -o ! -group "$(id -g)" \) -print -quit | grep -q .; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+      echo -e "${BLUE}${info} Correction des permissions (chown -R $(id -un):$(id -gn))${NC}"
+      sudo chown -R "$(id -u)":"$(id -g)" "$SERVER_DIR"
+      echo -e "${GREEN}${ok} Permissions corrigées.${NC}"
+    else
+      echo -e "${YELLOW}${warn} Permissions incohérentes détectées mais sudo non disponible sans mot de passe. Skip chown.${NC}"
+    fi
+  else
+    echo -e "${GREEN}${ok} Permissions déjà cohérentes, chown inutile.${NC}"
+  fi
 fi
 
 # ☕ Sélection auto de l'image Java selon MC_VERSION
@@ -74,8 +139,8 @@ choose_base_image() {
   # 1.8 → 1.12.2     → openjdk:8-jre-slim
   # 1.7.x (hist.)    → openjdk:8-jre-slim (compat)
   case "$v" in
-    1.21|1.21.*)   echo "openjdk:21-slim" ;;
-    1.20.5|1.20.5*|1.20.6|1.20.6*) echo "openjdk:21-slim" ;;
+    1.21|1.21.*)   echo "amazoncorretto:21-alpine" ;;
+    1.20.5|1.20.5*|1.20.6|1.20.6*) echo "amazoncorretto:21-alpine" ;;
     1.18|1.18.*|1.19|1.19.*|1.20|1.20.[0-4]|1.20.[0-4]*) echo "openjdk:17-jdk-slim" ;;
     1.17|1.17.*)   echo "openjdk:16-jdk-slim" ;;
     1.13|1.13.*|1.14|1.14.*|1.15|1.15.*|1.16|1.16.*) echo "openjdk:11-jre-slim" ;;
@@ -101,10 +166,12 @@ else
 fi
 
 # 🛑 Si un conteneur existe déjà avec ce nom → stop & rm
+STOP_TIMEOUT_SECONDS="${STOP_TIMEOUT_SECONDS:-30}"
 if docker ps -a --format '{{.Names}}' | grep -qx "${NOM_CONTENEUR}"; then
-  echo -e "${YELLOW}${warn} Conteneur '${NOM_CONTENEUR}' existe → stop & rm${NC}"
-  docker stop "${NOM_CONTENEUR}" || true
-  docker rm   "${NOM_CONTENEUR}" || true
+  echo -e "${YELLOW}${warn} Conteneur '${NOM_CONTENEUR}' existe → arrêt (${STOP_TIMEOUT_SECONDS}s) puis suppression${NC}"
+  docker stop -t "${STOP_TIMEOUT_SECONDS}" "${NOM_CONTENEUR}" || true
+  docker rm "${NOM_CONTENEUR}" || true
+  echo -e "${GREEN}${ok} Ancien conteneur nettoyé.${NC}"
 fi
 
 # 🧮 Limites CPU/RAM
@@ -131,6 +198,8 @@ BIND_PREFIX=""
 if [ -n "${BIND_IP}" ]; then
   BIND_PREFIX="${BIND_IP}:"
   echo -e "${BLUE}${info} Les ports seront bind sur ${BIND_IP}${NC}"
+else
+  echo -e "${YELLOW}${warn} BIND_IP vide: les ports non explicitement localhost seront publiés sur toutes les interfaces.${NC}"
 fi
 
 # 🔌 Ports à exposer
@@ -185,10 +254,22 @@ RESTART_FLAG=( --restart "${RESTART_POLICY}" )
 # 🔤 Variables d'env JVM (auto Xmx si limites actives et pas de JAVA_OPTS défini)
 ENV_FLAGS=()
 
+ensure_java_color_opts() {
+  local opts="$1"
+  if [[ "$opts" != *"-Dlog4j.configurationFile="* ]]; then
+    opts="$opts -Dlog4j.configurationFile=/minecraft/log4j2.xml"
+  fi
+  if [[ "$opts" != *"-Djansi.force="* ]]; then
+    opts="$opts -Djansi.force=true"
+  fi
+  echo "$opts"
+}
+
 # Si l'admin a défini JAVA_OPTS dans config.sh, on le respecte et on l'injecte tel quel
 if [ -n "${JAVA_OPTS:-}" ]; then
-  echo -e "${BLUE}${info} JAVA_OPTS défini manuellement → ${JAVA_OPTS}${NC}"
-  ENV_FLAGS+=( -e "JAVA_TOOL_OPTIONS=${JAVA_OPTS}" )
+  jvm_manual="$(ensure_java_color_opts "${JAVA_OPTS}")"
+  echo -e "${BLUE}${info} JAVA_OPTS défini manuellement → ${jvm_manual}${NC}"
+  ENV_FLAGS+=( -e "JAVA_TOOL_OPTIONS=${jvm_manual}" )
 else
   # Fonction pour convertir LIMIT_MEMORY en MB (supporte suffixes g/G/m/M)
   to_mb() {
@@ -208,18 +289,18 @@ else
       heap_mb=$(( limit_mb * 80 / 100 - 1024 ))
       [ "$heap_mb" -lt 1024 ] && heap_mb=1024
       xms_mb=$(( heap_mb / 2 ))
-      jvm_auto="-Xms${xms_mb}M -Xmx${heap_mb}M -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication"
+      jvm_auto="-Xms${xms_mb}M -Xmx${heap_mb}M -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication -Dlog4j.configurationFile=/minecraft/log4j2.xml -Djansi.force=true"
       echo -e "${BLUE}${info} AUTO-JVM: LIMIT_MEMORY=${LIMIT_MEMORY} → -Xms=${xms_mb}M, -Xmx=${heap_mb}M${NC}"
       ENV_FLAGS+=( -e "JAVA_TOOL_OPTIONS=${jvm_auto}" )
     else
       # Limite activée mais valeur non exploitable → fallback en pourcentages
-      jvm_pct="-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70 -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication"
+      jvm_pct="-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70 -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication -Dlog4j.configurationFile=/minecraft/log4j2.xml -Djansi.force=true"
       echo -e "${YELLOW}${warn} LIMIT_MEMORY vide ou invalide → fallback pourcentages (35/70%).${NC}"
       ENV_FLAGS+=( -e "JAVA_TOOL_OPTIONS=${jvm_pct}" )
     fi
   else
     # Pas de limites Docker → utiliser des pourcentages (respecte la RAM vue par la JVM)
-    jvm_pct="-XX:InitialRAMPercentage=25 -XX:MaxRAMPercentage=70 -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication"
+    jvm_pct="-XX:InitialRAMPercentage=25 -XX:MaxRAMPercentage=70 -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication -Dlog4j.configurationFile=/minecraft/log4j2.xml -Djansi.force=true"
     echo -e "${BLUE}${info} Pas de limites Docker → JVM en pourcentages (Initial 25% / Max 70%).${NC}"
     ENV_FLAGS+=( -e "JAVA_TOOL_OPTIONS=${jvm_pct}" )
   fi
@@ -227,7 +308,8 @@ fi
 
 # 🚀 Run !
 echo -e "${BLUE}${info} Lancement du conteneur '${NOM_CONTENEUR}'...${NC}"
-docker run -d \
+docker run -dt \
+  --init \
   "${RESTART_FLAG[@]}" \
   "${USER_FLAG[@]}" \
   "${LIMITS[@]}" \
@@ -243,9 +325,11 @@ echo -e "${BLUE}${info} Conseil: assure-toi que Docker démarre au boot :
 
 # 🪵 Logs
 if [ "${ATTACH_CONSOLE}" = "yes" ]; then
-  echo -e "${rocket} Attache console (Ctrl+C pour quitter, le conteneur reste actif)${NC}"
-  exec docker logs -f "${NOM_CONTENEUR}"
+  echo -e "${rocket} Attache console interactive (couleurs). Quitter sans arrêter: Ctrl+C (sig-proxy désactivé)${NC}"
+  exec docker attach --sig-proxy=false "${NOM_CONTENEUR}"
 else
-  echo -e "${rocket} Détaché. Pour voir les logs :
+  echo -e "${rocket} Détaché. Pour la console live (couleurs):
+    $SCRIPT_DIR/console.sh --mode attach
+  Pour l'historique:
     docker logs -f ${NOM_CONTENEUR}${NC}"
 fi

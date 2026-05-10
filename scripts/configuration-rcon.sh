@@ -13,8 +13,15 @@ fi
 SCRIPT_DIR="$1"
 SERVER_DIR="$2"
 
+# Compat: selon l'appelant, $1 peut être le dossier fusada/ ou fusada/scripts/
+if [ -f "$SCRIPT_DIR/config.sh" ]; then
+    FUSADA_DIR="$SCRIPT_DIR"
+else
+    FUSADA_DIR="$(dirname "$SCRIPT_DIR")"
+fi
+
 # 🔧 Vérification config
-CONFIG_FILE="$SCRIPT_DIR/config.sh"
+CONFIG_FILE="$FUSADA_DIR/config.sh"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}${err} [configuration-rcon] Fichier de config introuvable : ${CONFIG_FILE}${NC}"
     exit 1
@@ -45,8 +52,19 @@ else
 fi
 
 # ⚙️ Màj password & port (toujours les écraser pour cohérence)
+if [ -z "${RCON_PASSWORD:-}" ]; then
+    echo -e "${RED}${err} [configuration-rcon] RCON_PASSWORD vide dans config.sh.${NC}"
+    exit 1
+fi
+
+escape_sed_replacement() {
+    printf '%s' "$1" | sed -e 's/[&/\\]/\\&/g'
+}
+
+escaped_password="$(escape_sed_replacement "$RCON_PASSWORD")"
+
 if grep -Eq "^rcon.password=" "$SERVER_PROPERTIES"; then
-    sed -i "s/^rcon.password=.*/rcon.password=$RCON_PASSWORD/" "$SERVER_PROPERTIES"
+    sed -i "s/^rcon.password=.*/rcon.password=${escaped_password}/" "$SERVER_PROPERTIES"
 else
     echo "rcon.password=$RCON_PASSWORD" >> "$SERVER_PROPERTIES"
     RESTART_REQUIRED=true
@@ -61,14 +79,18 @@ fi
 
 # 🔁 Redémarrage si nécessaire
 if [ "$RESTART_REQUIRED" = true ]; then
-    echo -e "${BLUE}${restart} [configuration-rcon] Redémarrage du conteneur '${NOM_CONTENEUR}' pour appliquer les modifs...${NC}"
+    echo -e "${BLUE}${restart} [configuration-rcon] Modifs appliquées à server.properties.${NC}"
     if ! command -v docker >/dev/null 2>&1; then
         echo -e "${RED}${err} Docker non installé → impossible de redémarrer.${NC}"
         exit 1
     fi
-    if docker ps -a --format '{{.Names}}' | grep -qx "${NOM_CONTENEUR}"; then
+
+    if docker ps --format '{{.Names}}' | grep -qx "${NOM_CONTENEUR}"; then
+        echo -e "${BLUE}${restart} [configuration-rcon] Redémarrage du conteneur '${NOM_CONTENEUR}'...${NC}"
         docker restart "${NOM_CONTENEUR}" >/dev/null
         echo -e "${GREEN}${ok} [configuration-rcon] Serveur Minecraft redémarré avec succès.${NC}"
+    elif docker ps -a --format '{{.Names}}' | grep -qx "${NOM_CONTENEUR}"; then
+        echo -e "${YELLOW}${warn} [configuration-rcon] Conteneur présent mais arrêté: redémarrage non automatique.${NC}"
     else
         echo -e "${YELLOW}${warn} [configuration-rcon] Conteneur '${NOM_CONTENEUR}' introuvable → pas de restart.${NC}"
     fi

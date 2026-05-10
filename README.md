@@ -1,255 +1,335 @@
-# 📦 Fusada — Gestionnaire Docker pour serveurs Minecraft
+# Fusada - Documentation complete
 
-Fusada est un ensemble de scripts Bash qui permettent de **lancer, gérer et administrer facilement un serveur Minecraft** dans un conteneur Docker.
-Le but est de rendre l’expérience simple et propre, avec des logs lisibles (couleurs, emojis), une configuration centralisée et des outils intégrés pour RCON.
+Fusada est la couche d'exploitation du serveur Minecraft Docker.
+L'objectif est d'avoir une seule experience operateur, avec des commandes claires, une console lisible, et des garde-fous.
 
----
+Cette documentation decrit:
+- la commande unifiee
+- les scripts internes
+- les metriques RAM/CPU
+- les modes console et RCON
+- les cas d'usage quotidiens
 
-## ⚙️ Fonctionnement
+## Vue d'ensemble
 
-* Le serveur Minecraft est exécuté dans un **conteneur Docker**, construit depuis un `dockerfile` minimal basé sur une image OpenJDK adaptée à la version de Minecraft (Java 8 → 21 selon `MC_VERSION`).
-* Tous les fichiers du serveur (monde, plugins, configs) sont stockés sur l’hôte et montés en **volume** (`$SERVER_DIR:/minecraft`) → **persistance garantie**.
-* Les ports nécessaires (jeu, RCON, services additionnels comme VoiceChat, BlueMap, etc.) sont automatiquement exposés en TCP et UDP.
-* Le conteneur est lancé avec :
+Le repertoire fusada contient:
+- scripts de cycle de vie (start/stop/restart)
+- scripts de console et logs
+- script RCON
+- scripts de nettoyage pre/post incident
+- une commande unifiee qui orchestre tout
 
-  * **UID/GID de l’utilisateur hôte** (pas de fichiers root dans tes dossiers ✨)
-  * **politique de redémarrage** `--restart unless-stopped` (le serveur revient après crash ou reboot du VPS)
-  * **limites CPU/RAM optionnelles**
-* La configuration principale est centralisée dans `config.sh`.
-  Tous les scripts la chargent et s’adaptent.
+## Commande unifiee (recommandee)
 
----
+Script principal:
+- ./cli.sh
 
-## 📂 Structure du projet
-
-```
-fusada/
-├── README.md                # 📖 Documentation
-├── config.sh                # ⚙️ Configuration centrale
-├── dockerfile               # 🏗️ Image Docker du serveur
-├── lancement.sh             # 🚀 Lancer / construire le serveur
-├── arreter-serveur.sh       # 🛑 Stop + rm du conteneur
-├── redemarrer-serveur.sh    # 🔄 Restart complet (stop + rm + lancement)
-├── console.sh               # 📜 Voir les logs (avec couleurs ou attach)
-├── cli-rcon.sh              # ⌨️ Console RCON interactive ou one-shot
-└── configuration-rcon.sh    # 🔧 Auto-configure RCON dans server.properties
-```
-
----
-
-## ⚙️ Les scripts disponibles
-
-### 1. `config.sh`
-
-**Configuration centrale** du serveur Minecraft.
-
-Variables principales :
-
-* `NOM_CONTENEUR` : nom du conteneur Docker
-* `MC_VERSION` : version du serveur (ex: `1.21.6`) → détermine automatiquement l’image Java (`openjdk:XX-slim`)
-* `PORT_SERVEUR` : port du serveur Minecraft (TCP/UDP)
-* `RCON_PORT`, `RCON_PASSWORD` : config RCON
-* `ATTACH_CONSOLE=yes|no` : suivre les logs après lancement ou pas
-* `USE_RESOURCE_LIMITS=yes|no`, `LIMIT_CPU`, `LIMIT_MEMORY` : limites CPU/RAM
-* `VOICECHAT_PORT`, `DISCORDSRV_PORT`, `BLUEMAP_PORT` : ports spéciaux à ouvrir en TCP/UDP
-* `ADDITIONAL_PORTS_BOTH/TCP/UDP` : ports personnalisés
-* `JAVA_OPTS` : options Java (ex: `-Xms2G -Xmx6G`)
-
----
-
-### 2. `dockerfile`
-
-Image Docker de base :
-
-* Utilise l’`ARG BASE_IMAGE` choisi automatiquement en fonction de `MC_VERSION` (Java 8, 11, 16, 17, 21…).
-* Dossier de travail `/minecraft`
-* Démarre le serveur avec :
-
-  ```bash
-  java ${JAVA_OPTS} -jar server.jar nogui
-  ```
-
----
-
-### 3. `lancement.sh`
-
-**Lance le serveur Minecraft dans Docker** 🚀
-
-Fonctionnalités :
-
-* Vérifie Docker, `eula.txt`, `server.properties`.
-* Construit l’image avec la bonne base Java.
-* Stoppe + supprime un conteneur existant du même nom.
-* Monte le volume (`$SERVER_DIR:/minecraft`).
-* Expose automatiquement tous les ports configurés (TCP/UDP).
-* Lance le conteneur avec `--restart unless-stopped`.
-* Option : suivre les logs directement (`ATTACH_CONSOLE=yes`).
-
-Exemple :
+Aide rapide:
 
 ```bash
-./lancement.sh
+./cli.sh help
 ```
 
----
+Commandes disponibles:
+- start: lancement complet du serveur
+- stop: arret propre + suppression du conteneur
+- restart: restart complet
+- console: console live (attach)
+- logs: logs historiques/live (docker logs)
+- logscan: analyse des logs locaux par intervalle, niveau et termes
+- rcon: RCON interactif ou one-shot
+- backup: backup ZIP avec stop/restart guide
+- auto: active/desactive les taches automatiques (planning via config.sh)
+- cleanup: nettoyage maps/level corrompus
+- status: etat instantane + RAM/CPU
+- status-watch [sec]: status en boucle toutes les N secondes
 
-### 4. `arreter-serveur.sh`
-
-**Stoppe et supprime** le conteneur 🛑
+Exemples:
 
 ```bash
-./arreter-serveur.sh
+./cli.sh start
+./cli.sh console
+./cli.sh logs --since 30m
+./cli.sh logscan --since 2h --level warn
+./cli.sh logscan --from "2026-05-09 00:00:00" --to "2026-05-10 23:59:59" --level error terraspread biome
+./cli.sh rcon -c "list"
+./cli.sh rcon --with-console
+./cli.sh backup
+./cli.sh backup -y --no-restart
+./cli.sh auto status
+./cli.sh auto enable
+./cli.sh auto disable
+./cli.sh cleanup --dry-run
+./cli.sh status
+./cli.sh status-watch 2
 ```
 
----
+## Status RAM/CPU
 
-### 5. `redemarrer-serveur.sh`
+La commande status affiche:
+- etat conteneur (running/exited)
+- image et restart policy
+- date de demarrage
+- CPU percent instantane
+- memoire utilisee / limite
+- memoire percent
+- nombre de processus (PIDs)
+- ports publies
 
-**Redémarre complètement** le serveur 🔄
-(équivaut à stop + rm + lancement)
+Source des metriques:
+- docker stats --no-stream
+
+Commande:
 
 ```bash
-./redemarrer-serveur.sh
+./cli.sh status
 ```
 
----
-
-### 6. `console.sh`
-
-Affiche les **logs du conteneur** 📜
-
-Deux modes :
-
-* **Logs (défaut)** → `docker logs -f --raw` (garde les couleurs ANSI)
-* **Attach** → `docker attach` (console brute avec couleurs garanties, sortir avec `Ctrl+P` puis `Ctrl+Q`)
-
-Exemples :
+Mode surveillance:
 
 ```bash
-./console.sh              # logs avec couleurs
-./console.sh --mode attach  # attach direct à la console
-./console.sh --since 10m    # logs des 10 dernières minutes
+./cli.sh status-watch 2
 ```
 
----
+## Console et logs
 
-### 7. `cli-rcon.sh`
+Difference importante:
+- console (attach): flux live interactif, couleurs, comportement terminal proche de l'hebergeur
+- logs (docker logs): historique et suivi, utile pour forensics et fenetre temporelle
 
-Console **RCON** interactive ou en one-shot ⌨️
-
-* Utilise `mcrcon` (doit être installé).
-* Interactive :
-
-  ```bash
-  ./cli-rcon.sh
-  > say Bonjour !
-  > time set day
-  > exit
-  ```
-* One-shot (idéal pour scripts/CI) :
-
-  ```bash
-  ./cli-rcon.sh -c "say Hello depuis Fusada"
-  ./cli-rcon.sh "whitelist add Siwa"   # alias accepté
-  ```
-
-Options :
-
-* `-c "commande"` → envoie une seule commande et sort
-* `--no-config` → n’appelle pas `configuration-rcon.sh` (utilise les valeurs actuelles)
-
----
-
-### 8. `configuration-rcon.sh`
-
-Configure automatiquement **RCON** dans `server.properties` 🔧
-
-* Active `enable-rcon=true` si nécessaire
-* Met à jour/ajoute `rcon.password` et `rcon.port`
-* Redémarre le conteneur si une modification est appliquée
-
-Exemple :
+Commandes:
 
 ```bash
-./configuration-rcon.sh ./fusada ./serveur
+./cli.sh console
+./cli.sh logs --since 10m
 ```
 
----
+Raccourci de sortie console:
+- dans cette stack, la sortie est configuee pour quitter avec Ctrl+C sans stopper le serveur
 
-## ✨ Fonctionnalités principales
+## RCON
 
-* 🔥 **Gestion complète du cycle de vie** du conteneur Minecraft (start/stop/restart).
-* 📂 **Persistance des données** via volume hôte.
-* 👤 **UID/GID de l’utilisateur hôte** → pas de fichiers root à manipuler.
-* 🔁 **Redémarrage auto** après crash/reboot VPS (`--restart unless-stopped`).
-* 🧩 **Sélection auto de Java** en fonction de `MC_VERSION`.
-* 🔐 **RCON auto-configuré** et utilisable directement (interactive ou one-shot).
-* 🎨 **Logs colorés** (support ANSI, attach direct dispo).
-* 🔌 **Ports flexibles** : Minecraft, RCON, VoiceChat, BlueMap, DiscordSRV, plus des ports custom TCP/UDP.
-* 🧮 **Limites CPU/RAM optionnelles**.
-* 💡 **Extensible** (scripts modulaires, facile à intégrer dans CI/CD ou outils de monitoring).
+Script:
+- ./scripts/cli-rcon.sh
 
----
+Modes:
+- one-shot: envoi d'une commande puis sortie
+- interactif: prompt > avec historique si rlwrap est present
+- interactif + console en fond: prompt RCON avec flux console simultane
 
-## 🚀 Exemples d’utilisation courante
+Detection mcrcon:
+- PATH
+- ~/mcrcon/mcrcon
+- ~/mcrcon/bin/mcrcon
+- <server>/mcrcon/mcrcon
+- <server>/mcrcon/bin/mcrcon
 
-### Lancer le serveur
+Exemples:
 
 ```bash
-./lancement.sh
+./cli.sh rcon -c "say Bonjour"
+./cli.sh rcon
+./cli.sh rcon --without-console
+./cli.sh rcon --with-console --console-since 2m
 ```
 
-### Voir les logs (avec couleurs)
+Notes sur le mode --with-console:
+- le flux console est affiche en arriere-plan avec prefixe [CONSOLE] (actif par defaut)
+- le prompt RCON reste utilisable
+- selon le terminal, les sorties peuvent se melanger visuellement (normal)
+
+## Analyse des logs par intervalle
+
+Commande:
 
 ```bash
-./console.sh
+./cli.sh logscan [options] [termes...]
 ```
 
-### Attacher à la console brute
+Fonctionnalites:
+- filtre temporel relatif (`--since 30m`, `--since 4h`, `--since 2d`)
+- filtre temporel absolu (`--from` / `--to`)
+- filtre de niveau (`--level all|error|warn|info|debug|trace|fatal`)
+- liste variable de termes en fin de commande (optionnelle)
+- limite d'affichage (`--limit`)
+
+Exemples:
 
 ```bash
-./console.sh --mode attach
+./cli.sh logscan --since 6h --level error
+./cli.sh logscan --since 1d --level warn Connection refused
+./cli.sh logscan --from "2026-05-09 00:00:00" --to "2026-05-10 23:59:59" --level error terraspread biome
+./cli.sh logscan --since 2d --level all --limit 200
 ```
 
-### Arrêter proprement
+Notes:
+- Si aucun terme n'est fourni, aucun filtrage par mot-cle n'est applique.
+- Les termes sont compares en insensible a la casse.
+
+## Backup ZIP
+
+Script:
+- ./scripts/backup.sh
+
+Point d'entree recommande:
+- ./cli.sh backup
+
+Comportement:
+- si le serveur est en cours d'execution, le script demande d'abord l'autorisation de l'arreter
+- il cree une archive ZIP datee/horodatee dans le dossier backups
+- s'il etait allume avant backup, le script propose de le redemarrer en fin de traitement
+
+Exemples:
 
 ```bash
-./arreter-serveur.sh
+./cli.sh backup
+./cli.sh backup -y
+./cli.sh backup -y --no-restart
+./cli.sh backup --level 9
 ```
 
-### Redémarrer complètement
+Variables de configuration (config.sh):
+- BACKUP_COMPRESSION_LEVEL: niveau ZIP 0..9
+- BACKUP_OUTPUT_DIR: dossier de sortie (ex: backups)
+- BACKUP_FILE_PREFIX: prefixe du nom de fichier
+- BACKUP_INCLUDE_PATHS: liste des chemins a inclure
+- BACKUP_EXCLUDE_PATTERNS: motifs a exclure
+
+Format du nom d'archive:
+- <prefixe>-YYYY-MM-DD_HH-MM-SS.zip
+
+## Taches automatiques
+
+Script:
+- ./scripts/auto-tasks.sh
+
+Point d'entree recommande:
+- ./cli.sh auto <enable|disable|status>
+
+Important:
+- Le script sert uniquement a activer/desactiver les taches auto.
+- Le planning (heure/minute + actions activees) se configure uniquement dans config.sh.
+
+Actions supportees:
+- backup
+- cleanup (mise-au-propre)
+- restart
+
+Par defaut:
+- backup journalier
+- cleanup journalier
+- restart journalier
+
+Variables de planning (config.sh):
+- AUTO_TASKS_BACKUP_ENABLED, AUTO_TASKS_BACKUP_HOUR, AUTO_TASKS_BACKUP_MINUTE
+- AUTO_TASKS_CLEANUP_ENABLED, AUTO_TASKS_CLEANUP_HOUR, AUTO_TASKS_CLEANUP_MINUTE
+- AUTO_TASKS_RESTART_ENABLED, AUTO_TASKS_RESTART_HOUR, AUTO_TASKS_RESTART_MINUTE
+- AUTO_TASKS_LOG_FILE
+
+Exemples:
 
 ```bash
-./redemarrer-serveur.sh
+./cli.sh auto status
+./cli.sh auto enable
+./cli.sh auto disable
 ```
 
-### Envoyer une commande RCON
+Notes d'execution:
+- L'automatisation est basee sur crontab utilisateur.
+- Les executions sont logguees dans AUTO_TASKS_LOG_FILE.
+- Le service cron/crond doit etre actif sur l'hote.
+
+## Scripts internes (backend)
+
+La commande unifiee orchestre ces scripts:
+- lancement.sh
+- arreter-serveur.sh
+- redemarrer-serveur.sh
+- console.sh
+- cli-rcon.sh
+- mise-au-propre.sh
+
+La configuration centrale est dans:
+- config.sh
+
+## Workflow operateur recommande
+
+Demarrage:
 
 ```bash
-./cli-rcon.sh -c "say Hello World"
+./cli.sh start
 ```
 
-### Console RCON interactive
+Observation live:
 
 ```bash
-./cli-rcon.sh
-> time set day
-> op Siwa
-> exit
+./cli.sh console
 ```
 
----
+Commande admin:
 
-## 📌 Pré-requis
+```bash
+./cli.sh rcon -c "save-all"
+```
 
-* Debian/Ubuntu avec `docker` et `docker compose` installés
-* `mcrcon` (console RCON) :
+Diagnostic ressources:
 
-  ```bash
-  sudo apt update && sudo apt install -y mcrcon
-  ```
-* Facultatif mais recommandé : `rlwrap` pour l’historique des commandes dans RCON
+```bash
+./cli.sh status
+```
 
-  ```bash
-  sudo apt install -y rlwrap
-  ```
+Surveillance continue:
+
+```bash
+./cli.sh status-watch 2
+```
+
+Nettoyage manuel:
+
+```bash
+./cli.sh cleanup --dry-run
+./cli.sh cleanup
+```
+
+Arret/restart:
+
+```bash
+./cli.sh stop
+./cli.sh restart
+```
+
+## Prerequis
+
+Obligatoires:
+- docker
+- daemon docker joignable
+
+Recommandes:
+- mcrcon
+- rlwrap
+
+Installation rapide Debian/Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install -y docker.io mcrcon rlwrap
+```
+
+## FAQ rapide
+
+Pourquoi une commande unifiee alors que les scripts existent deja?
+- pour reduire la charge mentale: une seule entree, backend conserve
+
+Pourquoi status et status-watch?
+- status: photo instantanee
+- status-watch: monitoring court pendant les operations
+
+Pourquoi un mode RCON avec console en fond?
+- pour administrer sans perdre le contexte live du serveur
+
+## Annexes
+
+Le point d'entree conseille est:
+- ./cli.sh
+
+Les scripts historiques restent utilisables directement si besoin.

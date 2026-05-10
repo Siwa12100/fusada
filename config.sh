@@ -1,55 +1,75 @@
 #!/bin/bash
 # ============================================
-#  Configuration Fusada - Serveur Minecraft
-#  (sourcée par lancement.sh)
+#  Configuration Fusada
+#  Charge d'abord .env (si present), puis applique des defaults.
 # ============================================
 
-# 🔤 Nom du conteneur Docker
-NOM_CONTENEUR=${NOM_CONTENEUR:-"minecraft-serveur"}
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ENV_FILE="$SCRIPT_DIR/.env"
 
-# 🧩 Version Minecraft (ex: 1.21.6, 1.20.4, 1.17.1, 1.12.2, ...)
-# Sert à choisir automatiquement la version de Java dans l'image Docker.
-MC_VERSION=${MC_VERSION:-"1.21.6"}
+if [ -f "$ENV_FILE" ]; then
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+fi
 
-# 🌐 Port public côté hôte pour le jeu
-PORT_SERVEUR=${PORT_SERVEUR:-25565}
+# Core
+NOM_CONTENEUR=${NOM_CONTENEUR:-"ostal-neige"}
+MC_VERSION=${MC_VERSION:-"1.21.11"}
 
-# 🔐 RCON (TCP uniquement)
-RCON_PORT=${RCON_PORT:-25575}
-RCON_PASSWORD=${RCON_PASSWORD:-"mdpdefaut"}
+# Network
+PORT_SERVEUR=${PORT_SERVEUR:-23600}
+RCON_PORT=${RCON_PORT:-21600}
+RCON_PASSWORD=${RCON_PASSWORD:-"CHANGE_ME"}
+RCON_HOST=${RCON_HOST:-"127.0.0.1"}
 
-# 🖥️ Attacher la console après le lancement ? (yes/no)
+# Runtime behavior
 ATTACH_CONSOLE=${ATTACH_CONSOLE:-"yes"}
-
-# 🔁 Politique de restart Docker (reboot/crash)
 RESTART_POLICY=${RESTART_POLICY:-"unless-stopped"}
+STOP_TIMEOUT_SECONDS=${STOP_TIMEOUT_SECONDS:-30}
+CLEANUP_ON_LAUNCH=${CLEANUP_ON_LAUNCH:-"yes"}
+AUTO_CREATE_LOG4J2=${AUTO_CREATE_LOG4J2:-"yes"}
 
-# 👤 Faire tourner le process dans le conteneur avec l’UID/GID de l’utilisateur hôte
+# Permissions
 RUN_AS_HOST_USER=${RUN_AS_HOST_USER:-"yes"}
+FIX_OWNERSHIP_ON_START=${FIX_OWNERSHIP_ON_START:-"yes"}
 
-# 🧹 Corriger les permissions (chown -R) au démarrage ?
-FIX_OWNERSHIP_ON_START=${FIX_OWNERSHIP_ON_START:-"no"}
+# Resources
+USE_RESOURCE_LIMITS=${USE_RESOURCE_LIMITS:-"yes"}
+LIMIT_CPU=${LIMIT_CPU:-""}
+LIMIT_MEMORY=${LIMIT_MEMORY:-"36g"}
 
-# 🧮 Limites de ressources
-USE_RESOURCE_LIMITS=${USE_RESOURCE_LIMITS:-"no"}
-LIMIT_CPU=${LIMIT_CPU:-""}         # ex: "2"
-LIMIT_MEMORY=${LIMIT_MEMORY:-""}   # ex: "6g"
-
-# 📦 (Avancé) Bind sur une IP précise de l’hôte (sinon vide)
+# Bind
 BIND_IP=${BIND_IP:-""}
 
-# ============================
-#  Ports services “spéciaux”
-# ============================
-# Ouvrir TCP **et** UDP pour ces services si définis (non vides)
-VOICECHAT_PORT=${VOICECHAT_PORT:-""}     # ex: 24454 (Simple Voice Chat)
-DISCORDSRV_PORT=${DISCORDSRV_PORT:-""}   # ex: 24654 (si besoin)
-BLUEMAP_PORT=${BLUEMAP_PORT:-""}         # ex: 8100 (web server BlueMap)
+# Service ports
+VOICECHAT_PORT=${VOICECHAT_PORT:-"24753"}
+DISCORDSRV_PORT=${DISCORDSRV_PORT:-""}
+BLUEMAP_PORT=${BLUEMAP_PORT:-"24654"}
+ADDITIONAL_PORTS_BOTH=${ADDITIONAL_PORTS_BOTH:-"7867 8192"}
+ADDITIONAL_PORTS_TCP=${ADDITIONAL_PORTS_TCP:-""}
+ADDITIONAL_PORTS_UDP=${ADDITIONAL_PORTS_UDP:-""}
 
-# Ports additionnels
-ADDITIONAL_PORTS_BOTH=${ADDITIONAL_PORTS_BOTH:-""}  # "24753 30000 30001"
-ADDITIONAL_PORTS_TCP=${ADDITIONAL_PORTS_TCP:-""}    # "27015 27016"
-ADDITIONAL_PORTS_UDP=${ADDITIONAL_PORTS_UDP:-""}    # "19132"
-
-# 🧪 Options Java supplémentaires (facultatif), ex: "-Xms2G -Xmx6G"
+# JVM
 JAVA_OPTS=${JAVA_OPTS:-""}
+
+# Backup
+BACKUP_COMPRESSION_LEVEL=${BACKUP_COMPRESSION_LEVEL:-"3"}
+BACKUP_OUTPUT_DIR=${BACKUP_OUTPUT_DIR:-"backups"}
+BACKUP_FILE_PREFIX=${BACKUP_FILE_PREFIX:-"ostal-neige-backup"}
+BACKUP_INCLUDE_PATHS=${BACKUP_INCLUDE_PATHS:-"world world_nether world_the_end plugins config server.properties bukkit.yml commands.yml help.yml permissions.yml purpur.yml spigot.yml whitelist.json ops.json banned-ips.json banned-players.json wepif.yml"}
+BACKUP_EXCLUDE_PATTERNS=${BACKUP_EXCLUDE_PATTERNS:-"backups/* cache/* logs/* debug/* libraries/* versions/* *.tmp"}
+
+# Automatic tasks scheduling (config only, enable/disable via auto-tasks.sh)
+AUTO_TASKS_BACKUP_ENABLED=${AUTO_TASKS_BACKUP_ENABLED:-"yes"}
+AUTO_TASKS_BACKUP_HOUR=${AUTO_TASKS_BACKUP_HOUR:-4}
+AUTO_TASKS_BACKUP_MINUTE=${AUTO_TASKS_BACKUP_MINUTE:-0}
+
+AUTO_TASKS_CLEANUP_ENABLED=${AUTO_TASKS_CLEANUP_ENABLED:-"yes"}
+AUTO_TASKS_CLEANUP_HOUR=${AUTO_TASKS_CLEANUP_HOUR:-4}
+AUTO_TASKS_CLEANUP_MINUTE=${AUTO_TASKS_CLEANUP_MINUTE:-20}
+
+AUTO_TASKS_RESTART_ENABLED=${AUTO_TASKS_RESTART_ENABLED:-"yes"}
+AUTO_TASKS_RESTART_HOUR=${AUTO_TASKS_RESTART_HOUR:-4}
+AUTO_TASKS_RESTART_MINUTE=${AUTO_TASKS_RESTART_MINUTE:-40}
+
+AUTO_TASKS_LOG_FILE=${AUTO_TASKS_LOG_FILE:-"logs/fusada-auto-tasks.log"}
