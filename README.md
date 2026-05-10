@@ -40,6 +40,7 @@ Commandes disponibles:
 - rcon: RCON interactif ou one-shot
 - backup: backup ZIP avec stop/restart guide
 - auto: active/desactive les taches automatiques (planning via config.sh)
+- watcher: surveillance des WARN "Entity uuid already exists" + correction auto
 - cleanup: nettoyage maps/level corrompus
 - status: etat instantane + RAM/CPU
 - status-watch [sec]: status en boucle toutes les N secondes
@@ -59,6 +60,9 @@ Exemples:
 ./cli.sh auto status
 ./cli.sh auto enable
 ./cli.sh auto disable
+./cli.sh watcher start
+./cli.sh watcher status
+./cli.sh watcher logs
 ./cli.sh cleanup --dry-run
 ./cli.sh status
 ./cli.sh status-watch 2
@@ -238,6 +242,37 @@ Notes d'execution:
 - L'automatisation est basee sur crontab utilisateur.
 - Les executions sont logguees dans AUTO_TASKS_LOG_FILE.
 - Le service cron/crond doit etre actif sur l'hote.
+
+## Watcher des UUID dupliques
+
+Script:
+- ./scripts/watch-entity-duplicates.sh
+
+Point d'entree recommande:
+- ./cli.sh watcher <start|stop|status|logs>
+
+Fonctionnement:
+- suit `docker logs -f` et detecte les lignes `Entity uuid already exists`
+- identifie les zones connues via les `cpos=[x, z]`
+- execute une commande kill ciblee via `rcon-cli`
+- enchaine un `save-all` immediat pour persister la correction
+- applique un cooldown par zone pour eviter le spam
+
+Logs:
+- actions et commandes executees: `ENTITY_WATCHER_LOG_FILE` (defaut `logs/fusada-entity-watcher.log`)
+- evenements inconnus/non mappes: `ENTITY_WATCHER_UNKNOWN_LOG_FILE` (defaut `logs/fusada-entity-watcher-unknown.log`)
+
+Configuration (config.sh):
+- `ENTITY_WATCHER_ENABLED`
+- `ENTITY_WATCHER_COOLDOWN_SECONDS`
+- `ENTITY_WATCHER_SAVE_DELAY_SECONDS`
+- `ENTITY_WATCHER_DOCKER_LOGS_SINCE`
+- `ENTITY_WATCHER_LOG_FILE`
+- `ENTITY_WATCHER_UNKNOWN_LOG_FILE`
+- `ENTITY_WATCHER_PID_FILE`
+- `ENTITY_WATCHER_ZONE_OVERWORLD_9627_CMD`
+- `ENTITY_WATCHER_ZONE_OVERWORLD_5300_CMD`
+- `ENTITY_WATCHER_ZONE_NETHER_1152_CMD`
 
 ## Scripts internes (backend)
 

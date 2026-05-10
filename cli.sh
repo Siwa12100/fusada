@@ -33,6 +33,7 @@ Commandes:
   rcon [opts]           Console RCON / one-shot
   backup [opts]         Backup ZIP (avec arret/restart guide)
   auto [cmd]            Active/desactive les taches automatiques
+  watcher [cmd]         Watcher UUID dupliques (start|stop|status|logs)
   cleanup [opts]        Nettoyage maps/level corrompus
   status                Etat serveur + RAM/CPU instantanes
   status-watch [sec]    Status en boucle (defaut: 2s)
@@ -51,6 +52,9 @@ Exemples:
   $0 auto status
   $0 auto enable
   $0 auto disable
+  $0 watcher start
+  $0 watcher status
+  $0 watcher logs
   $0 status
   $0 status-watch 2
 EOF
@@ -175,6 +179,9 @@ case "$cmd" in
     ;;
   auto)
     run_script "auto-tasks.sh" "$@"
+    ;;
+  watcher)
+    run_script "watch-entity-duplicates.sh" "$@"
     ;;
   cleanup)
     run_script "mise-au-propre.sh" "$@"
