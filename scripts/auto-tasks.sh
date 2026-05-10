@@ -105,13 +105,13 @@ $CRON_BEGIN
 EOF
 
   if [[ "$AUTO_TASKS_BACKUP_ENABLED" == "yes" ]]; then
-    echo "${AUTO_TASKS_BACKUP_MINUTE} ${AUTO_TASKS_BACKUP_HOUR} * * * cd '$SCRIPT_DIR' && ./backup.sh -y --no-restart >> '$AUTO_TASKS_LOG_FILE_RESOLVED' 2>&1"
+    echo "${AUTO_TASKS_BACKUP_MINUTE} ${AUTO_TASKS_BACKUP_HOUR} * * * cd '$SCRIPT_DIR' && bash ./backup.sh -y --no-restart >> '$AUTO_TASKS_LOG_FILE_RESOLVED' 2>&1"
   fi
   if [[ "$AUTO_TASKS_CLEANUP_ENABLED" == "yes" ]]; then
-    echo "${AUTO_TASKS_CLEANUP_MINUTE} ${AUTO_TASKS_CLEANUP_HOUR} * * * cd '$SCRIPT_DIR' && ./mise-au-propre.sh --mode launch --yes >> '$AUTO_TASKS_LOG_FILE_RESOLVED' 2>&1"
+    echo "${AUTO_TASKS_CLEANUP_MINUTE} ${AUTO_TASKS_CLEANUP_HOUR} * * * cd '$SCRIPT_DIR' && bash ./mise-au-propre.sh --mode launch --yes >> '$AUTO_TASKS_LOG_FILE_RESOLVED' 2>&1"
   fi
   if [[ "$AUTO_TASKS_RESTART_ENABLED" == "yes" ]]; then
-    echo "${AUTO_TASKS_RESTART_MINUTE} ${AUTO_TASKS_RESTART_HOUR} * * * cd '$SCRIPT_DIR' && ./redemarrer-serveur.sh >> '$AUTO_TASKS_LOG_FILE_RESOLVED' 2>&1"
+    echo "${AUTO_TASKS_RESTART_MINUTE} ${AUTO_TASKS_RESTART_HOUR} * * * cd '$SCRIPT_DIR' && bash ./redemarrer-serveur.sh >> '$AUTO_TASKS_LOG_FILE_RESOLVED' 2>&1"
   fi
 
   echo "$CRON_END"

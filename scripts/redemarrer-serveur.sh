@@ -34,8 +34,8 @@ if [ -f "$CONFIG_FILE" ]; then
     docker stop -t "$STOP_TIMEOUT_SECONDS" "$NOM_CONTENEUR" || true
     docker rm "$NOM_CONTENEUR" || true
 
-    if [ -x "$LAUNCHER" ]; then
-        "$LAUNCHER"
+    if [ -f "$LAUNCHER" ]; then
+        bash "$LAUNCHER"
     else
         echo -e "${RED}${err} Script de lancement introuvable : $LAUNCHER${NC}"
         exit 1

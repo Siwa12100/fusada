@@ -132,11 +132,15 @@ print_status() {
 run_script() {
   local script="$1"
   shift || true
-  if [[ ! -x "$SCRIPTS_DIR/$script" ]]; then
-    echo -e "${RED}${err} Script introuvable/non executable: $SCRIPTS_DIR/$script${NC}"
+  if [[ ! -f "$SCRIPTS_DIR/$script" ]]; then
+    echo -e "${RED}${err} Script introuvable: $SCRIPTS_DIR/$script${NC}"
     exit 1
   fi
-  exec "$SCRIPTS_DIR/$script" "$@"
+  if [[ ! -r "$SCRIPTS_DIR/$script" ]]; then
+    echo -e "${RED}${err} Script illisible: $SCRIPTS_DIR/$script${NC}"
+    exit 1
+  fi
+  exec bash "$SCRIPTS_DIR/$script" "$@"
 }
 
 cmd="${1:-help}"

@@ -61,8 +61,8 @@ fi
 MAP_SCRIPT="$SCRIPT_DIR/nettoyer-maps-corrompues.sh"
 LEVEL_SCRIPT="$SCRIPT_DIR/nettoyer-level-temp.sh"
 
-if [[ ! -x "$MAP_SCRIPT" || ! -x "$LEVEL_SCRIPT" ]]; then
-  echo -e "${RED}${err} Scripts de nettoyage introuvables ou non executables.${NC}"
+if [[ ! -f "$MAP_SCRIPT" || ! -f "$LEVEL_SCRIPT" ]]; then
+  echo -e "${RED}${err} Scripts de nettoyage introuvables.${NC}"
   echo "  - $MAP_SCRIPT"
   echo "  - $LEVEL_SCRIPT"
   exit 1
@@ -114,21 +114,21 @@ else
 fi
 
 echo -e "${BLUE}${info} Nettoyage des maps corrompues...${NC}"
-"$MAP_SCRIPT"
+bash "$MAP_SCRIPT"
 echo -e "${GREEN}${ok} Nettoyage maps termine.${NC}"
 
 echo -e "${BLUE}${info} Nettoyage des level temporaires corrompus...${NC}"
-"$LEVEL_SCRIPT"
+bash "$LEVEL_SCRIPT"
 echo -e "${GREEN}${ok} Nettoyage level termine.${NC}"
 
 if [[ "$MODE" == "manual" && "$WAS_RUNNING" == "yes" ]]; then
   if ask_yes_no "Le serveur etait allume. Redemarrer maintenant ?" "yes"; then
     LAUNCH_SCRIPT="$SCRIPT_DIR/lancement.sh"
-    if [[ -x "$LAUNCH_SCRIPT" ]]; then
+    if [[ -f "$LAUNCH_SCRIPT" ]]; then
       echo -e "${BLUE}${info} Redemarrage via lancement.sh...${NC}"
-      exec "$LAUNCH_SCRIPT"
+      exec bash "$LAUNCH_SCRIPT"
     else
-      echo -e "${RED}${err} Script de lancement introuvable/non executable: ${LAUNCH_SCRIPT}${NC}"
+      echo -e "${RED}${err} Script de lancement introuvable: ${LAUNCH_SCRIPT}${NC}"
       exit 1
     fi
   else

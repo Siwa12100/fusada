@@ -52,7 +52,7 @@ resolve_mcrcon() {
 
   local c
   for c in "${candidates[@]}"; do
-    if [[ -x "$c" ]]; then
+    if [[ -f "$c" ]]; then
       echo "$c"
       return 0
     fi
@@ -90,13 +90,13 @@ echo -e "${BLUE}${info} Console RCON sur ${RCON_HOST}:${RCON_PORT} (container: $
 
 # 🧰 (Re)config RCON si demandé et si script dispo
 if [[ $DO_CONFIG -eq 1 ]]; then
-  if [[ -x "$SCRIPT_DIR/configuration-rcon.sh" ]]; then
+  if [[ -f "$SCRIPT_DIR/configuration-rcon.sh" ]]; then
     echo -e "${BLUE}${info} Configuration RCON via configuration-rcon.sh${NC}"
-    "$SCRIPT_DIR/configuration-rcon.sh" "$SCRIPT_DIR" "$SERVER_DIR" || {
+    bash "$SCRIPT_DIR/configuration-rcon.sh" "$SCRIPT_DIR" "$SERVER_DIR" || {
       echo -e "${YELLOW}${warn} configuration-rcon.sh a retourné une erreur. On continue quand même.${NC}"
     }
   else
-    echo -e "${YELLOW}${warn} configuration-rcon.sh absent/non exécutable → ignoré (utilisation des valeurs actuelles)${NC}"
+    echo -e "${YELLOW}${warn} configuration-rcon.sh absent → ignoré (utilisation des valeurs actuelles)${NC}"
   fi
 fi
 

@@ -76,11 +76,11 @@ fi
 
 # 🧹 Mise au propre pre-lancement (non interactive)
 if [ "${CLEANUP_ON_LAUNCH:-yes}" = "yes" ]; then
-  if [ -x "$SCRIPT_DIR/mise-au-propre.sh" ]; then
+  if [ -f "$SCRIPT_DIR/mise-au-propre.sh" ]; then
     echo -e "${BLUE}${info} Exécution de mise-au-propre (mode launch)${NC}"
-    "$SCRIPT_DIR/mise-au-propre.sh" --mode launch
+    bash "$SCRIPT_DIR/mise-au-propre.sh" --mode launch
   else
-    echo -e "${YELLOW}${warn} mise-au-propre.sh introuvable ou non exécutable → skip${NC}"
+    echo -e "${YELLOW}${warn} mise-au-propre.sh introuvable → skip${NC}"
   fi
 else
   echo -e "${YELLOW}${warn} CLEANUP_ON_LAUNCH=no → nettoyage automatique ignoré${NC}"
@@ -100,11 +100,11 @@ fi
 # 🧰 RCON (si server.properties présent)
 SERVER_PROPERTIES="$SERVER_DIR/server.properties"
 if [ -f "$SERVER_PROPERTIES" ]; then
-  if [ -x "$SCRIPT_DIR/configuration-rcon.sh" ]; then
+  if [ -f "$SCRIPT_DIR/configuration-rcon.sh" ]; then
     echo -e "${BLUE}${info} Configuration RCON via configuration-rcon.sh${NC}"
-    "$SCRIPT_DIR/configuration-rcon.sh" "$SCRIPT_DIR" "$SERVER_DIR"
+    bash "$SCRIPT_DIR/configuration-rcon.sh" "$SCRIPT_DIR" "$SERVER_DIR"
   else
-    echo -e "${YELLOW}${warn} configuration-rcon.sh introuvable ou non exécutable → ignoré${NC}"
+    echo -e "${YELLOW}${warn} configuration-rcon.sh introuvable → ignoré${NC}"
   fi
 else
   echo -e "${YELLOW}${warn} server.properties absent → skip configuration RCON${NC}"
@@ -205,10 +205,19 @@ fi
 # 🔌 Ports à exposer
 PORT_FLAGS=()
 
+# — Port interne Minecraft (détecté depuis server.properties, fallback 25565)
+MC_INTERNAL_PORT="25565"
+if [ -f "$SERVER_PROPERTIES" ]; then
+  detected_port="$(awk -F= '/^[[:space:]]*server-port[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); print $2; exit}' "$SERVER_PROPERTIES" 2>/dev/null || true)"
+  if [[ "$detected_port" =~ ^[0-9]+$ ]]; then
+    MC_INTERNAL_PORT="$detected_port"
+  fi
+fi
+
 # — Minecraft (TCP & UDP)
-PORT_FLAGS+=( -p "${BIND_PREFIX}${PORT_SERVEUR}:25565/tcp" )
-PORT_FLAGS+=( -p "${BIND_PREFIX}${PORT_SERVEUR}:25565/udp" )
-echo -e "${port} Minecraft: ${PORT_SERVEUR} (tcp/udp)${NC}"
+PORT_FLAGS+=( -p "${BIND_PREFIX}${PORT_SERVEUR}:${MC_INTERNAL_PORT}/tcp" )
+PORT_FLAGS+=( -p "${BIND_PREFIX}${PORT_SERVEUR}:${MC_INTERNAL_PORT}/udp" )
+echo -e "${port} Minecraft: ${PORT_SERVEUR}->${MC_INTERNAL_PORT} (tcp/udp)${NC}"
 
 # — RCON (TCP only, bind seulement sur localhost)
 PORT_FLAGS+=( -p "127.0.0.1:${RCON_PORT}:${RCON_PORT}/tcp" )
