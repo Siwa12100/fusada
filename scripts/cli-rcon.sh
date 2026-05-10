@@ -107,6 +107,26 @@ if [[ ! -f "$SERVER_PROPERTIES" ]]; then
   exit 1
 fi
 
+# Source de vérité runtime: server.properties
+sp_enable_rcon=$(awk -F= '/^[[:space:]]*enable-rcon[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); print $2; exit}' "$SERVER_PROPERTIES" 2>/dev/null || true)
+sp_rcon_port=$(awk -F= '/^[[:space:]]*rcon.port[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); print $2; exit}' "$SERVER_PROPERTIES" 2>/dev/null || true)
+sp_rcon_password=$(awk -F= '/^[[:space:]]*rcon.password[[:space:]]*=/{sub(/^[[:space:]]*/,"",$2); sub(/[[:space:]]*$/,"",$2); print $2; exit}' "$SERVER_PROPERTIES" 2>/dev/null || true)
+
+if [[ "$sp_enable_rcon" != "true" ]]; then
+  echo -e "${RED}${err} enable-rcon n'est pas a true dans ${SERVER_PROPERTIES}.${NC}"
+  exit 1
+fi
+
+if [[ "$sp_rcon_port" =~ ^[0-9]+$ ]] && [[ "$sp_rcon_port" != "$RCON_PORT" ]]; then
+  echo -e "${YELLOW}${warn} RCON_PORT (${RCON_PORT}) differe de server.properties (${sp_rcon_port}) → utilisation de ${sp_rcon_port}.${NC}"
+  RCON_PORT="$sp_rcon_port"
+fi
+
+if [[ -n "$sp_rcon_password" ]] && [[ "$sp_rcon_password" != "$RCON_PASSWORD" ]]; then
+  echo -e "${YELLOW}${warn} RCON_PASSWORD differe de server.properties → utilisation de la valeur server.properties.${NC}"
+  RCON_PASSWORD="$sp_rcon_password"
+fi
+
 if ! command -v docker >/dev/null 2>&1; then
   echo -e "${RED}${err} Docker non disponible dans le PATH.${NC}"
   exit 1

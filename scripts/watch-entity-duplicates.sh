@@ -46,7 +46,14 @@ else
 fi
 
 STATE_DIR=$(dirname "$PID_FILE")
-RCON_CMD=(docker exec "$NOM_CONTENEUR" rcon-cli)
+RCON_MODE=""
+MCRCON_BIN=""
+
+RCON_HOST="${RCON_HOST:-127.0.0.1}"
+RCON_PORT="${RCON_PORT:-21600}"
+RCON_PASSWORD="${RCON_PASSWORD:-CHANGE_ME}"
+
+SERVER_PROPERTIES="$SERVER_DIR/server.properties"
 
 declare -A LAST_KILL=()
 
@@ -98,11 +105,76 @@ require_container_running() {
   fi
 }
 
-require_rcon_cli() {
-  if ! docker exec "$NOM_CONTENEUR" sh -lc 'command -v rcon-cli >/dev/null 2>&1' >/dev/null 2>&1; then
-    echo -e "${RED}${err} rcon-cli est introuvable dans le conteneur '$NOM_CONTENEUR'.${NC}"
+apply_runtime_rcon_settings() {
+  if [[ ! -f "$SERVER_PROPERTIES" ]]; then
+    return 0
+  fi
+
+  local sp_enable_rcon sp_rcon_port sp_rcon_password
+  sp_enable_rcon=$(awk -F= '/^[[:space:]]*enable-rcon[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); print $2; exit}' "$SERVER_PROPERTIES" 2>/dev/null || true)
+  sp_rcon_port=$(awk -F= '/^[[:space:]]*rcon.port[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); print $2; exit}' "$SERVER_PROPERTIES" 2>/dev/null || true)
+  sp_rcon_password=$(awk -F= '/^[[:space:]]*rcon.password[[:space:]]*=/{sub(/^[[:space:]]*/,"",$2); sub(/[[:space:]]*$/,"",$2); print $2; exit}' "$SERVER_PROPERTIES" 2>/dev/null || true)
+
+  if [[ "$sp_enable_rcon" != "true" ]]; then
+    log "${err} enable-rcon n'est pas a true dans ${SERVER_PROPERTIES}"
     exit 1
   fi
+
+  if [[ "$sp_rcon_port" =~ ^[0-9]+$ ]] && [[ "$sp_rcon_port" != "$RCON_PORT" ]]; then
+    log "${warn} RCON_PORT (${RCON_PORT}) differe de server.properties (${sp_rcon_port}) -> utilisation de ${sp_rcon_port}"
+    RCON_PORT="$sp_rcon_port"
+  fi
+
+  if [[ -n "$sp_rcon_password" ]] && [[ "$sp_rcon_password" != "$RCON_PASSWORD" ]]; then
+    log "${warn} RCON_PASSWORD differe de server.properties -> utilisation de la valeur server.properties"
+    RCON_PASSWORD="$sp_rcon_password"
+  fi
+}
+
+resolve_mcrcon_host() {
+  if command -v mcrcon >/dev/null 2>&1; then
+    command -v mcrcon
+    return 0
+  fi
+
+  local candidates=(
+    "$HOME/mcrcon/mcrcon"
+    "$HOME/mcrcon/bin/mcrcon"
+    "$SERVER_DIR/mcrcon/mcrcon"
+    "$SERVER_DIR/mcrcon/bin/mcrcon"
+  )
+
+  local c
+  for c in "${candidates[@]}"; do
+    if [[ -f "$c" ]]; then
+      echo "$c"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+require_rcon() {
+  if docker exec "$NOM_CONTENEUR" sh -lc 'command -v rcon-cli >/dev/null 2>&1' >/dev/null 2>&1; then
+    RCON_MODE="container-rcon-cli"
+    return 0
+  fi
+
+  if docker exec "$NOM_CONTENEUR" sh -lc 'command -v mcrcon >/dev/null 2>&1' >/dev/null 2>&1; then
+    RCON_MODE="container-mcrcon"
+    return 0
+  fi
+
+  if MCRCON_BIN="$(resolve_mcrcon_host)"; then
+    RCON_MODE="host-mcrcon"
+    return 0
+  fi
+
+  echo -e "${RED}${err} Aucun client RCON disponible.${NC}"
+  echo -e "${RED}${err} Testés: rcon-cli (conteneur), mcrcon (conteneur), mcrcon (hôte).${NC}"
+  echo -e "${YELLOW}${warn} Installe mcrcon sur l'hôte, ou ajoute rcon-cli dans le conteneur.${NC}"
+  exit 1
 }
 
 watcher_pid() {
@@ -153,7 +225,20 @@ run_rcon() {
   local cmd="$1"
   local output
 
-  output=$("${RCON_CMD[@]}" "$cmd" 2>&1) || {
+  case "$RCON_MODE" in
+    container-rcon-cli)
+      output=$(docker exec "$NOM_CONTENEUR" rcon-cli "$cmd" 2>&1)
+      ;;
+    container-mcrcon)
+      output=$(docker exec "$NOM_CONTENEUR" mcrcon -H 127.0.0.1 -P "$RCON_PORT" -p "$RCON_PASSWORD" "$cmd" 2>&1)
+      ;;
+    host-mcrcon)
+      output=$("$MCRCON_BIN" -H "$RCON_HOST" -P "$RCON_PORT" -p "$RCON_PASSWORD" "$cmd" 2>&1)
+      ;;
+    *)
+      output="RCON mode inconnu: $RCON_MODE"
+      ;;
+  esac || {
     log "${err} RCON echec pour commande: $cmd"
     log "${err} Sortie RCON: ${output}"
     return 1
@@ -205,7 +290,8 @@ run_watcher() {
 
   require_docker
   require_container_running
-  require_rcon_cli
+  apply_runtime_rcon_settings
+  require_rcon
 
   mkdir -p "$STATE_DIR" "$(dirname "$LOG_FILE")" "$(dirname "$UNKNOWN_LOG_FILE")"
   echo "$$" > "$PID_FILE"
@@ -217,6 +303,7 @@ run_watcher() {
   log "${info} Log actions: ${LOG_FILE}"
   log "${info} Log inconnus: ${UNKNOWN_LOG_FILE}"
   log "${info} Cooldown: ${ENTITY_WATCHER_COOLDOWN_SECONDS}s"
+  log "${info} RCON mode: ${RCON_MODE}"
 
   docker logs --since "$ENTITY_WATCHER_DOCKER_LOGS_SINCE" -f "$NOM_CONTENEUR" 2>&1 | while IFS= read -r line; do
     if [[ "$line" != *"Entity uuid already exists"* ]]; then
