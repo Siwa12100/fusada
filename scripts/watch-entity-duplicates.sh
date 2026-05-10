@@ -343,7 +343,7 @@ start_watcher() {
   fi
 
   mkdir -p "$STATE_DIR" "$(dirname "$LOG_FILE")" "$(dirname "$UNKNOWN_LOG_FILE")"
-  nohup bash "$0" run >> "$LOG_FILE" 2>&1 &
+  nohup bash "$0" run >/dev/null 2>&1 &
   local bg_pid=$!
 
   # Petit delai pour verifier que le process n'a pas crash immediatement.
